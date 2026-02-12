@@ -1,4 +1,5 @@
 import requests
+import os
 import json
 from typing import List, Optional
 
@@ -6,7 +7,9 @@ from typing import List, Optional
 class TranslationService:
     def __init__(self):
         # 阿里云DashScope API配置
-        self.api_key = "sk-04d8ee70cc154dfd93deffcc6fbc0c66"
+        self.api_key = os.environ.get("DASHSCOPE_API_KEY", "")
+        if not self.api_key:
+            print("警告: 未设置DASHSCOPE_API_KEY环境变量")
         self.base_url = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
         self.model = "qwen-turbo"  # 可以使用 qwen-turbo, qwen-plus, qwen-max
 
