@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图片翻译工具</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #f5f5f5;
+        }
+        .header {
+            background: white;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .header-icon {
+            font-size: 28px;
+            color: #1890ff;
+        }
+        .header h1 {
+            margin: 0;
+            color: #1890ff;
+            font-size: 24px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .upload-area {
+            border: 2px dashed #d9d9d9;
+            border-radius: 8px;
+            padding: 60px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .upload-area:hover {
+            border-color: #1890ff;
+        }
+        .upload-icon {
+            font-size: 48px;
+            color: #1890ff;
+            margin-bottom: 10px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        select {
+            width: 200px;
+            padding: 8px 12px;
+            border: 1px solid #d9d9d9;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .button {
+            background: #1890ff;
+            color: white;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .button:hover {
+            background: #40a9ff;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f6ffed;
+            border: 1px solid #b7eb8f;
+            border-radius: 4px;
+            display: none;
+        }
+        .status.show {
+            display: block;
+        }
+        .links {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e8e8e8;
+        }
+        .links a {
+            color: #1890ff;
+            text-decoration: none;
+            margin-right: 20px;
+        }
+        .links a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-icon">🔄</div>
+        <h1>图片翻译工具</h1>
+    </div>
+
+    <div class="container">
+        <div class="card">
+            <h2>上传图片</h2>
+            
+            <div class="form-group">
+                <label>源语言：</label>
+                <select id="sourceLang">
+                    <option value="auto">自动检测</option>
+                    <option value="zh">中文</option>
+                    <option value="en">English</option>
+                    <option value="ja">日本語</option>
+                    <option value="ko">한국어</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>目标语言：</label>
+                <select id="targetLang">
+                    <option value="zh" selected>中文</option>
+                    <option value="en">English</option>
+                    <option value="ja">日本語</option>
+                    <option value="ko">한국어</option>
+                    <option value="fr">Français</option>
+                    <option value="de">Deutsch</option>
+                    <option value="es">Español</option>
+                    <option value="ru">Русский</option>
+                </select>
+            </div>
+
+            <form id="uploadForm" action="/api/v1/translate" method="POST" enctype="multipart/form-data">
+                <div class="upload-area" onclick="document.getElementById('image').click()">
+                    <div class="upload-icon">📁</div>
+                    <p>点击或拖拽图片到此区域上传</p>
+                    <p style="color: #999; font-size: 14px;">支持 JPG、PNG、WebP 格式，最大 10MB</p>
+                    <input type="file" id="image" name="image" accept="image/*" style="display: none;" required>
+                </div>
+                <input type="hidden" id="target_language" name="target_language" value="zh">
+                <input type="hidden" id="source_language" name="source_language" value="auto">
+                <br>
+                <button type="submit" class="button">开始翻译</button>
+            </form>
+
+            <div id="status" class="status">
+                <strong>提示：</strong>当前运行演示版本，会返回原图。完整版支持真实OCR翻译。
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>使用说明</h3>
+            <ol>
+                <li>选择源语言（可选）和目标语言</li>
+                <li>点击上传区域选择图片</li>
+                <li>点击"开始翻译"按钮</li>
+                <li>等待处理完成并下载结果</li>
+            </ol>
+        </div>
+
+        <div class="links">
+            <h3>相关链接</h3>
+            <a href="/api/v1/languages" target="_blank">支持的语言列表</a>
+            <a href="http://localhost:8000/docs" target="_blank">API文档</a>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('uploadForm').addEventListener('submit', function(e) {
+            document.getElementById('target_language').value = document.getElementById('targetLang').value;
+            document.getElementById('source_language').value = document.getElementById('sourceLang').value;
+            document.getElementById('status').classList.add('show');
+        });
+
+        document.getElementById('image').addEventListener('change', function(e) {
+            if (e.target.files.length > 0) {
+                const file = e.target.files[0];
+                if (file.size > 10 * 1024 * 1024) {
+                    alert('文件太大！最大支持10MB');
+                    e.target.value = '';
+                }
+            }
+        });
+    </script>
+</body>
+</html>
