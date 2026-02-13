@@ -163,6 +163,11 @@ async def get_task_status(request: Request, task_id: str):
     # 浏览器访问返回HTML页面
     if "text/html" in request.headers.get("accept", ""):
         if task["status"] == "completed":
+            # 获取原图路径
+            upload_path = task.get("upload_path", "")
+            original_filename = os.path.basename(upload_path) if upload_path else ""
+            original_url = f"/uploads/{original_filename}" if original_filename else ""
+
             html_content = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -173,12 +178,24 @@ async def get_task_status(request: Request, task_id: str):
         body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background: #f5f5f5; }}
         .header {{ background: white; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }}
         .header h1 {{ margin: 0; color: #1890ff; font-size: 24px; }}
-        .container {{ max-width: 800px; margin: 40px auto; padding: 0 20px; }}
-        .card {{ background: white; border-radius: 8px; padding: 30px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 20px; text-align: center; }}
+        .container {{ max-width: 1200px; margin: 40px auto; padding: 0 20px; }}
+        .success-card {{ background: white; border-radius: 8px; padding: 30px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 30px; text-align: center; }}
         .success-icon {{ font-size: 64px; color: #52c41a; margin-bottom: 20px; }}
-        .download-btn {{ display: inline-block; background: #1890ff; color: white; padding: 12px 32px; border-radius: 4px; text-decoration: none; font-size: 16px; margin-top: 20px; }}
-        .back-btn {{ display: inline-block; background: white; color: #1890ff; border: 1px solid #1890ff; padding: 12px 32px; border-radius: 4px; text-decoration: none; font-size: 16px; margin-top: 20px; margin-left: 10px; }}
-        .image-preview {{ max-width: 100%; max-height: 400px; margin: 20px 0; border: 1px solid #d9d9d9; border-radius: 4px; }}
+        .comparison-container {{ display: flex; gap: 30px; margin: 30px 0; flex-wrap: wrap; justify-content: center; }}
+        .image-card {{ flex: 1; min-width: 400px; max-width: 550px; background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }}
+        .image-card h3 {{ margin: 0 0 15px 0; color: #333; font-size: 18px; }}
+        .image-card .label {{ display: inline-block; padding: 4px 12px; border-radius: 4px; font-size: 12px; margin-bottom: 10px; }}
+        .label-original {{ background: #f0f0f0; color: #666; }}
+        .label-translated {{ background: #e6f7ff; color: #1890ff; }}
+        .image-preview {{ max-width: 100%; max-height: 500px; border: 1px solid #e8e8e8; border-radius: 4px; cursor: pointer; transition: transform 0.2s; }}
+        .image-preview:hover {{ transform: scale(1.02); }}
+        .download-section {{ margin-top: 30px; text-align: center; }}
+        .download-btn {{ display: inline-block; background: #1890ff; color: white; padding: 12px 32px; border-radius: 4px; text-decoration: none; font-size: 16px; margin: 10px; }}
+        .download-btn:hover {{ background: #40a9ff; }}
+        .back-btn {{ display: inline-block; background: white; color: #1890ff; border: 1px solid #1890ff; padding: 12px 32px; border-radius: 4px; text-decoration: none; font-size: 16px; margin: 10px; }}
+        .back-btn:hover {{ background: #e6f7ff; }}
+        .task-info {{ margin-top: 15px; padding: 10px; background: #f6ffed; border-radius: 4px; color: #52c41a; font-size: 14px; }}
+        @media (max-width: 900px) {{ .image-card {{ min-width: 100%; }} .comparison-container {{ flex-direction: column; }} }}
     </style>
 </head>
 <body>
@@ -186,14 +203,32 @@ async def get_task_status(request: Request, task_id: str):
         <h1>🔄 图片翻译工具</h1>
     </div>
     <div class="container">
-        <div class="card">
+        <div class="success-card">
             <div class="success-icon">✅</div>
             <h2>翻译完成！</h2>
-            <p>任务ID: {task_id}</p>
-            <img src="/api/v1/download/{task_id}" alt="翻译结果" class="image-preview">
-            <br>
+            <p class="task-info">任务ID: {task_id}</p>
+        </div>
+        
+        <div class="comparison-container">
+            <div class="image-card">
+                <h3>📷 原图</h3>
+                <span class="label label-original">Original</span>
+                <a href="{original_url}" target="_blank">
+                    <img src="{original_url}" alt="原图" class="image-preview" title="点击查看大图">
+                </a>
+            </div>
+            <div class="image-card">
+                <h3>📝 翻译结果</h3>
+                <span class="label label-translated">Translated</span>
+                <a href="/api/v1/download/{task_id}" target="_blank">
+                    <img src="/api/v1/download/{task_id}" alt="翻译结果" class="image-preview" title="点击查看大图">
+                </a>
+            </div>
+        </div>
+        
+        <div class="download-section">
             <a href="/api/v1/download/{task_id}" download class="download-btn">⬇️ 下载翻译结果</a>
-            <a href="/" class="back-btn">返回首页</a>
+            <a href="/" class="back-btn">🔄 翻译新图片</a>
         </div>
     </div>
 </body>
