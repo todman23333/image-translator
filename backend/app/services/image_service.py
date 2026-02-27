@@ -103,7 +103,9 @@ class ImageService:
         )
 
         # 修复5: 检测是否为图例区域
-        is_legend = self._detect_legend_region(img_array.shape[1], x1, x2, y1, y2)
+        is_legend = self._detect_legend_region(
+            img_array.shape[1], img_array.shape[0], x1, x2, y1, y2
+        )
 
         return {
             "font_color": text_color,
@@ -228,12 +230,18 @@ class ImageService:
             return "left"
 
     def _detect_legend_region(
-        self, img_width: int, x1: int, x2: int, y1: int, y2: int
+        self, img_width: int, img_height: int, x1: int, x2: int, y1: int, y2: int
     ) -> bool:
-        """检测是否为图例区域"""
-        # 图例通常在右侧边缘
+        """检测是否为图例区域（右侧或顶部）"""
+        # 图例通常在右侧边缘或顶部
         right_margin = (img_width - x2) / img_width
-        return right_margin < 0.1
+        is_right_edge = right_margin < 0.15  # 右侧边缘
+
+        # 顶部图例（如标题栏）
+        top_margin = y1 / img_height
+        is_top_area = top_margin < 0.15  # 顶部15%区域
+
+        return is_right_edge or is_top_area
 
     def redraw_image(
         self, image_path: str, regions_with_style: List[Dict], output_path: str
