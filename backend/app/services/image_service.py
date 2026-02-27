@@ -421,22 +421,19 @@ class ImageService:
         region_width = x2 - x1
         region_height = y2 - y1
 
-        # 修复: 检测底部区域并调整
+        # 修复: 检测底部区域
         is_bottom_region = bool(img_height and y1 > img_height * 0.75)
-        if is_bottom_region:
-            # 底部区域增加额外空间（宽度和高度）
-            region_width = int(region_width * 2.0)  # 增加宽度空间
-            region_height = int(region_height * 1.5)
-            # 缩写文本以适应空间
-            text = self._abbreviate_text(text, is_bottom_region)
 
         # 修复1&6: 智能字体大小调整和自动换行
         font_size, lines = self._calculate_optimal_font_and_lines(
             text, region_width, region_height, style["font_size"], is_bottom_region
         )
 
-        if not lines:
-            return
+        if not lines or (len(lines) == 1 and not lines[0].strip()):
+            # 如果没有有效的行，使用原始文本
+            lines = [text] if text else []
+            if not lines:
+                return
 
         font = self._get_font(font_size, style.get("is_bold", False))
 
@@ -468,11 +465,7 @@ class ImageService:
 
             y = start_y + i * line_height
 
-            # 确保不超出底部边界
-            if y + font_size > y2 and is_bottom_region:
-                break
-
-            # 绘制文字
+            # 绘制文字（底部区域也要确保显示至少第一行）
             draw.text((x, y), line, font=font, fill=text_color)
 
     def _calculate_optimal_font_and_lines(
@@ -483,30 +476,36 @@ class ImageService:
         original_font_size: int,
         is_bottom_region: bool = False,
     ) -> Tuple[int, List[str]]:
-        """修复1: 计算最优字体大小和自动换行 - 改进版V4"""
+        """修复1: 计算最优字体大小和自动换行 - 改进版V5（确保不截断）"""
 
         # 修复术语翻译问题
         text = self._fix_translation_terms(text)
 
-        # 扩大区域限制，给英文更多空间
-        adjusted_width = int(region_width * 1.8)  # 允许80%的宽度溢出
-        adjusted_height = int(
-            region_height * (1.5 if is_bottom_region else 1.3)
-        )  # 底部区域允许更多高度
+        # 底部区域使用更紧凑的设置
+        if is_bottom_region:
+            # 底部区域：使用实际区域大小，不扩大
+            adjusted_width = int(region_width * 1.0)  # 不溢出
+            adjusted_height = int(region_height * 1.0)  # 不扩大
+            min_font_size = 6  # 最小字体可以更小
+            max_font_size = min(original_font_size, 14)  # 最大字体限制
+            line_height_mult = 1.2  # 更紧凑的行高
+        else:
+            adjusted_width = int(region_width * 1.8)
+            adjusted_height = int(region_height * 1.3)
+            min_font_size = 8
+            max_font_size = max(original_font_size, 18)
+            line_height_mult = 1.4
 
-        min_font_size = 10 if is_bottom_region else 8  # 底部区域最小字体稍大
-        max_font_size = max(original_font_size, 18)  # 统一最大字体大小
-
-        # 二分查找最优字体大小
+        # 查找最优字体大小
         best_font_size = min_font_size
         best_lines = [text]
+        found_fit = False
 
         for font_size in range(max_font_size, min_font_size - 1, -1):
             font = self._get_font(font_size)
             lines = self._wrap_text_to_lines(text, adjusted_width, font)
 
-            # 底部区域使用更大的行高
-            line_height = font_size * (1.6 if is_bottom_region else 1.4)
+            line_height = font_size * line_height_mult
             total_height = len(lines) * line_height
 
             # 检查是否所有行都能放下
@@ -521,7 +520,20 @@ class ImageService:
             if total_height <= adjusted_height and all_lines_fit:
                 best_font_size = font_size
                 best_lines = lines
+                found_fit = True
                 break
+
+        # 如果没找到合适的大小，使用最小字体并强制适应
+        if not found_fit and is_bottom_region:
+            font = self._get_font(min_font_size)
+            # 尝试进一步缩写
+            short_text = self._abbreviate_text(text, True)
+            if short_text != text:
+                lines = self._wrap_text_to_lines(short_text, adjusted_width, font)
+            else:
+                lines = [text]
+            best_font_size = min_font_size
+            best_lines = lines
 
         return best_font_size, best_lines
 
