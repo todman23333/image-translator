@@ -4,6 +4,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 import os
 
+# 加载环境变量
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from app.api.routes import router
 
 # 创建必要的目录

@@ -295,7 +295,12 @@ class ImageService:
                     continue
 
                 self._draw_text_in_region_v2(
-                    draw, result_img, region["bbox"], translated_text, style
+                    draw,
+                    result_img,
+                    region["bbox"],
+                    translated_text,
+                    style,
+                    image.height,
                 )
                 drawn_regions.append(region["bbox"])
 
@@ -361,8 +366,9 @@ class ImageService:
         bbox: List[List[int]],
         text: str,
         style: Dict,
+        img_height: Optional[int] = None,
     ):
-        """在指定区域绘制文字 - 全面改进版V2"""
+        """在指定区域绘制文字 - 全面改进版V3"""
         # 计算边界框
         x_coords = [p[0] for p in bbox]
         y_coords = [p[1] for p in bbox]
@@ -372,9 +378,15 @@ class ImageService:
         region_width = x2 - x1
         region_height = y2 - y1
 
+        # 修复: 检测底部区域并调整
+        is_bottom_region = bool(img_height and y1 > img_height * 0.8)
+        if is_bottom_region:
+            # 底部区域增加额外空间
+            region_height = int(region_height * 1.5)
+
         # 修复1&6: 智能字体大小调整和自动换行
         font_size, lines = self._calculate_optimal_font_and_lines(
-            text, region_width, region_height, style["font_size"]
+            text, region_width, region_height, style["font_size"], is_bottom_region
         )
 
         if not lines:
@@ -382,14 +394,18 @@ class ImageService:
 
         font = self._get_font(font_size, style.get("is_bold", False))
 
-        # 计算总高度
-        line_height = font_size * 1.2
+        # 修复: 使用更合理的行高
+        line_height = font_size * (1.4 if is_bottom_region else 1.2)
         total_text_height = len(lines) * line_height
 
-        # 垂直居中
-        start_y = y1 + (region_height - total_text_height) / 2
+        # 垂直居中，但确保不超出边界
+        start_y = max(y1, y1 + (region_height - total_text_height) / 2)
 
-        text_color = tuple(style["font_color"])
+        # 修复: 优化文字颜色对比度
+        text_color = self._optimize_text_color(
+            style["font_color"], style["background_color"]
+        )
+        text_color = tuple(text_color)
 
         # 逐行绘制
         for i, line in enumerate(lines):
@@ -406,23 +422,34 @@ class ImageService:
 
             y = start_y + i * line_height
 
+            # 确保不超出底部边界
+            if y + font_size > y2 and is_bottom_region:
+                break
+
             # 绘制文字
             draw.text((x, y), line, font=font, fill=text_color)
 
     def _calculate_optimal_font_and_lines(
-        self, text: str, region_width: int, region_height: int, original_font_size: int
+        self,
+        text: str,
+        region_width: int,
+        region_height: int,
+        original_font_size: int,
+        is_bottom_region: bool = False,
     ) -> Tuple[int, List[str]]:
-        """修复1: 计算最优字体大小和自动换行 - 改进版V3"""
+        """修复1: 计算最优字体大小和自动换行 - 改进版V4"""
 
         # 修复术语翻译问题
         text = self._fix_translation_terms(text)
 
         # 扩大区域限制，给英文更多空间
-        adjusted_width = int(region_width * 1.5)  # 允许50%的溢出
-        adjusted_height = int(region_height * 1.3)  # 允许30%的高度溢出
+        adjusted_width = int(region_width * 1.8)  # 允许80%的宽度溢出
+        adjusted_height = int(
+            region_height * (1.5 if is_bottom_region else 1.3)
+        )  # 底部区域允许更多高度
 
-        min_font_size = 8
-        max_font_size = max(original_font_size, 16)
+        min_font_size = 10 if is_bottom_region else 8  # 底部区域最小字体稍大
+        max_font_size = max(original_font_size, 18)  # 统一最大字体大小
 
         # 二分查找最优字体大小
         best_font_size = min_font_size
@@ -432,7 +459,8 @@ class ImageService:
             font = self._get_font(font_size)
             lines = self._wrap_text_to_lines(text, adjusted_width, font)
 
-            line_height = font_size * 1.4
+            # 底部区域使用更大的行高
+            line_height = font_size * (1.6 if is_bottom_region else 1.4)
             total_height = len(lines) * line_height
 
             # 检查是否所有行都能放下
@@ -494,6 +522,38 @@ class ImageService:
             lines.append(current_line)
 
         return lines if lines else [text]
+
+    def _optimize_text_color(
+        self, text_color: List[int], bg_color: List[int]
+    ) -> List[int]:
+        """优化文字颜色以确保在背景上有足够的对比度"""
+        text_rgb = np.array(text_color)
+        bg_rgb = np.array(bg_color)
+
+        # 计算相对亮度 (基于人眼对不同颜色的敏感度)
+        def get_luminance(rgb):
+            r, g, b = rgb / 255.0
+            r = r / 12.92 if r <= 0.03928 else ((r + 0.055) / 1.055) ** 2.4
+            g = g / 12.92 if g <= 0.03928 else ((g + 0.055) / 1.055) ** 2.4
+            b = b / 12.92 if b <= 0.03928 else ((b + 0.055) / 1.055) ** 2.4
+            return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+        text_lum = get_luminance(text_rgb)
+        bg_lum = get_luminance(bg_rgb)
+
+        # 计算对比度
+        contrast = (max(text_lum, bg_lum) + 0.05) / (min(text_lum, bg_lum) + 0.05)
+
+        # 如果对比度不够，调整文字颜色
+        if contrast < 4.5:  # WCAG AA 标准
+            if bg_lum > 0.5:
+                # 背景较亮，使用深色文字
+                return [0, 0, 0]
+            else:
+                # 背景较暗，使用白色文字
+                return [255, 255, 255]
+
+        return text_color
 
     def _get_font(self, size: int, is_bold: bool = False):
         """获取字体"""
