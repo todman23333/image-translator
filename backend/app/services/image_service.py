@@ -11,10 +11,10 @@ class ImageService:
         self.font_dir = os.environ.get("FONT_DIR", "./fonts")
         self.default_font_size = 20
 
-        # 修复4: 专业术语词典
+        # 修复4: 专业术语词典 - 扩展版
         self.terminology_dict = {
             # 光伏/电力领域
-            " photovoltaic": "光伏",
+            "photovoltaic": "光伏",
             "power generation": "发电",
             "power generation curve": "发电曲线",
             "household appliance": "家用电器",
@@ -30,6 +30,7 @@ class ImageService:
             "charges": "充电",
             "charging": "充电中",
             "discharging": "放电中",
+            "discharge": "放电",
             "standby": "待机",
             "grid input power": "电网输入功率",
             "sell to the grid": "卖给电网",
@@ -39,7 +40,24 @@ class ImageService:
             "charging period": "充电时段",
             "discharge period": "放电时段",
             "non-charging and non-discharging period": "非充非放时段",
+            # 新增术语
+            "load": "负载",
+            "pool": "电池包",
+            "take-off": "取电",
+            "draws": "取",
+            "generates": "产生",
+            "sells": "出售",
+            "from": "从",
+            "pv": "光伏",
+            "battery": "电池",
+            "pack": "包",
+            "grid": "电网",
+            "input": "输入",
+            "output": "输出",
         }
+
+        # 反向词典用于修正翻译
+        self.reverse_terminology = {v: k for k, v in self.terminology_dict.items()}
 
     def extract_styles(self, image_path: str, text_regions: List[Dict]) -> List[Dict]:
         """提取每个文字区域的样式信息"""
@@ -220,7 +238,7 @@ class ImageService:
     def redraw_image(
         self, image_path: str, regions_with_style: List[Dict], output_path: str
     ):
-        """重绘图片 - 全面改进版"""
+        """重绘图片 - 全面改进版V3（添加重叠检测）"""
         print(f"🎨 开始重绘图片: {image_path}")
         print(f"   共 {len(regions_with_style)} 个文字区域")
 
@@ -232,6 +250,10 @@ class ImageService:
         # 修复2: 使用矩形填充替代Inpainting，效果更好
         result_img = image.copy()
         draw = ImageDraw.Draw(result_img)
+
+        # 修复7: 检测重叠区域并排序处理
+        regions_with_style = self._sort_regions_by_priority(regions_with_style)
+        drawn_regions = []  # 记录已绘制的区域
 
         # 首先清除所有文字区域（使用背景色填充）
         for item in regions_with_style:
@@ -266,9 +288,16 @@ class ImageService:
                 print(
                     f"   区域 {i + 1}: '{original_text[:30]}...' → '{translated_text[:30]}...'"
                 )
+
+                # 检查是否与已绘制区域重叠
+                if self._check_overlap(region["bbox"], drawn_regions):
+                    print(f"   ⚠️  检测到重叠，跳过此区域")
+                    continue
+
                 self._draw_text_in_region_v2(
                     draw, result_img, region["bbox"], translated_text, style
                 )
+                drawn_regions.append(region["bbox"])
 
         # 转换回原始模式
         if original_mode != "RGBA":
@@ -276,6 +305,54 @@ class ImageService:
 
         result_img.save(output_path, quality=95)
         print(f"✅ 重绘完成: {output_path}")
+
+    def _sort_regions_by_priority(self, regions_with_style: List[Dict]) -> List[Dict]:
+        """按优先级排序区域（图例优先，大的区域优先）"""
+
+        def get_priority(item):
+            style = item["style"]
+            bbox = item["region"]["bbox"]
+            x_coords = [p[0] for p in bbox]
+            y_coords = [p[1] for p in bbox]
+            area = (max(x_coords) - min(x_coords)) * (max(y_coords) - min(y_coords))
+
+            # 图例优先，大面积优先
+            is_legend = style.get("is_legend", False)
+            return (not is_legend, -area)  # 图例在前，面积大的在前
+
+        return sorted(regions_with_style, key=get_priority)
+
+    def _check_overlap(
+        self,
+        bbox: List[List[int]],
+        drawn_regions: List[List[List[int]]],
+        threshold: float = 0.3,
+    ) -> bool:
+        """检查是否与已绘制区域重叠"""
+        x_coords = [p[0] for p in bbox]
+        y_coords = [p[1] for p in bbox]
+        x1, x2 = min(x_coords), max(x_coords)
+        y1, y2 = min(y_coords), max(y_coords)
+
+        area = (x2 - x1) * (y2 - y1)
+
+        for drawn_bbox in drawn_regions:
+            dx_coords = [p[0] for p in drawn_bbox]
+            dy_coords = [p[1] for p in drawn_bbox]
+            dx1, dx2 = min(dx_coords), max(dx_coords)
+            dy1, dy2 = min(dy_coords), max(dy_coords)
+
+            # 计算重叠面积
+            overlap_x = max(0, min(x2, dx2) - max(x1, dx1))
+            overlap_y = max(0, min(y2, dy2) - max(y1, dy1))
+            overlap_area = overlap_x * overlap_y
+
+            if overlap_area > 0:
+                overlap_ratio = overlap_area / area
+                if overlap_ratio > threshold:
+                    return True
+
+        return False
 
     def _draw_text_in_region_v2(
         self,
@@ -335,64 +412,88 @@ class ImageService:
     def _calculate_optimal_font_and_lines(
         self, text: str, region_width: int, region_height: int, original_font_size: int
     ) -> Tuple[int, List[str]]:
-        """修复1: 计算最优字体大小和自动换行"""
+        """修复1: 计算最优字体大小和自动换行 - 改进版V3"""
 
-        # 尝试不换行，减小字体
-        font_size = original_font_size
-        min_font_size = 6
+        # 修复术语翻译问题
+        text = self._fix_translation_terms(text)
 
-        while font_size >= min_font_size:
+        # 扩大区域限制，给英文更多空间
+        adjusted_width = int(region_width * 1.5)  # 允许50%的溢出
+        adjusted_height = int(region_height * 1.3)  # 允许30%的高度溢出
+
+        min_font_size = 8
+        max_font_size = max(original_font_size, 16)
+
+        # 二分查找最优字体大小
+        best_font_size = min_font_size
+        best_lines = [text]
+
+        for font_size in range(max_font_size, min_font_size - 1, -1):
             font = self._get_font(font_size)
-            bbox = ImageDraw.Draw(Image.new("RGB", (1, 1))).textbbox(
-                (0, 0), text, font=font
+            lines = self._wrap_text_to_lines(text, adjusted_width, font)
+
+            line_height = font_size * 1.4
+            total_height = len(lines) * line_height
+
+            # 检查是否所有行都能放下
+            all_lines_fit = all(
+                ImageDraw.Draw(Image.new("RGB", (1, 1))).textbbox(
+                    (0, 0), line, font=font
+                )[2]
+                <= adjusted_width
+                for line in lines
             )
-            text_width = bbox[2] - bbox[0]
-            text_height = bbox[3] - bbox[1]
 
-            # 如果不换行能放下
-            if text_width <= region_width and text_height <= region_height:
-                return font_size, [text]
-
-            # 如果字体已经很小了，尝试换行
-            if font_size <= 10:
+            if total_height <= adjusted_height and all_lines_fit:
+                best_font_size = font_size
+                best_lines = lines
                 break
 
-            font_size -= 1
+        return best_font_size, best_lines
 
-        # 修复1: 自动换行处理
-        font = self._get_font(font_size)
+    def _fix_translation_terms(self, text: str) -> str:
+        """修复翻译中的术语错误"""
+        # 修正常见错误翻译
+        corrections = {
+            "electricity Pool": "battery pack",
+            "power take-off": "power draw",
+            "Pool power": "battery pack power",
+            "from electricity": "from the battery",
+            "and from": "and",
+            "Load from": "The load draws power from",
+        }
+
+        for wrong, correct in corrections.items():
+            text = text.replace(wrong, correct)
+
+        return text
+
+    def _wrap_text_to_lines(self, text: str, max_width: int, font) -> List[str]:
+        """将文本换行到指定宽度"""
         words = text.split()
-        lines = []
-        current_line = ""
+        if not words:
+            return [text]
 
-        for word in words:
-            test_line = current_line + " " + word if current_line else word
+        lines = []
+        current_line = words[0]
+
+        for word in words[1:]:
+            test_line = current_line + " " + word
             bbox = ImageDraw.Draw(Image.new("RGB", (1, 1))).textbbox(
                 (0, 0), test_line, font=font
             )
             test_width = bbox[2] - bbox[0]
 
-            if test_width <= region_width:
+            if test_width <= max_width:
                 current_line = test_line
             else:
-                if current_line:
-                    lines.append(current_line)
+                lines.append(current_line)
                 current_line = word
 
         if current_line:
             lines.append(current_line)
 
-        # 如果换行后行数太多，继续减小字体
-        line_height = font_size * 1.3
-        total_height = len(lines) * line_height
-
-        while total_height > region_height and font_size > min_font_size:
-            font_size -= 1
-            font = self._get_font(font_size)
-            line_height = font_size * 1.3
-            total_height = len(lines) * line_height
-
-        return font_size, lines if lines else [text]
+        return lines if lines else [text]
 
     def _get_font(self, size: int, is_bold: bool = False):
         """获取字体"""
