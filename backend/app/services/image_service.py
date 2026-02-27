@@ -291,8 +291,17 @@ class ImageService:
                     f"   区域 {i + 1}: '{original_text[:30]}...' → '{translated_text[:30]}...'"
                 )
 
+                # 检查区域位置
+                y_coords = [p[1] for p in region["bbox"]]
+                y1 = min(y_coords)
+                is_bottom = y1 > image.height * 0.75
+
                 # 检查是否与已绘制区域重叠
-                if self._check_overlap(region["bbox"], drawn_regions):
+                # 底部区域放宽检测，避免丢失文字
+                overlap_threshold = 0.3 if is_bottom else 0.1
+                if self._check_overlap(
+                    region["bbox"], drawn_regions, overlap_threshold
+                ):
                     print(f"   ⚠️  检测到重叠，跳过此区域")
                     continue
 
@@ -352,7 +361,7 @@ class ImageService:
         self,
         bbox: List[List[int]],
         drawn_regions: List[List[List[int]]],
-        threshold: float = 0.1,  # 降低阈值，更严格
+        threshold: float = 0.1,
     ) -> bool:
         """检查是否与已绘制区域重叠 - 改进版"""
         x_coords = [p[0] for p in bbox]
@@ -362,8 +371,8 @@ class ImageService:
 
         area = (x2 - x1) * (y2 - y1)
 
-        # 扩大检查区域，考虑文字实际占用空间
-        margin = 5  # 增加边距避免文字太挤
+        # 根据阈值调整边距（底部区域使用更小边距）
+        margin = 2 if threshold > 0.2 else 5
         x1 -= margin
         x2 += margin
         y1 -= margin
