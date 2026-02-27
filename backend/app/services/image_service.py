@@ -291,10 +291,11 @@ class ImageService:
                     f"   区域 {i + 1}: '{original_text[:30]}...' → '{translated_text[:30]}...'"
                 )
 
-                # 检查区域位置
+                # 检查区域位置和类型
                 y_coords = [p[1] for p in region["bbox"]]
                 y1 = min(y_coords)
                 is_bottom = y1 > image.height * 0.75
+                is_legend = style.get("is_legend", False)
 
                 # 检查是否与已绘制区域重叠
                 # 底部区域放宽检测，避免丢失文字
@@ -312,6 +313,7 @@ class ImageService:
                     translated_text,
                     style,
                     image.height,
+                    is_legend,
                 )
                 drawn_regions.append(region["bbox"])
 
@@ -410,6 +412,7 @@ class ImageService:
         text: str,
         style: Dict,
         img_height: Optional[int] = None,
+        is_legend: bool = False,
     ):
         """在指定区域绘制文字 - 全面改进版V3"""
         # 计算边界框
@@ -425,8 +428,14 @@ class ImageService:
         is_bottom_region = bool(img_height and y1 > img_height * 0.75)
 
         # 修复1&6: 智能字体大小调整和自动换行
+        # 图例区域使用统一字体大小
         font_size, lines = self._calculate_optimal_font_and_lines(
-            text, region_width, region_height, style["font_size"], is_bottom_region
+            text,
+            region_width,
+            region_height,
+            style["font_size"],
+            is_bottom_region,
+            is_legend,
         )
 
         if not lines or (len(lines) == 1 and not lines[0].strip()):
@@ -475,11 +484,21 @@ class ImageService:
         region_height: int,
         original_font_size: int,
         is_bottom_region: bool = False,
+        is_legend: bool = False,
     ) -> Tuple[int, List[str]]:
-        """修复1: 计算最优字体大小和自动换行 - 改进版V5（确保不截断）"""
+        """修复1: 计算最优字体大小和自动换行 - 改进版V6（图例统一字号）"""
 
         # 修复术语翻译问题
         text = self._fix_translation_terms(text)
+
+        # 图例区域：使用统一的字体大小
+        if is_legend:
+            # 图例统一使用16px字体
+            legend_font_size = 16
+            font = self._get_font(legend_font_size)
+            # 图例区域允许溢出，不换行
+            lines = [text]
+            return legend_font_size, lines
 
         # 底部区域使用更紧凑的设置
         if is_bottom_region:
