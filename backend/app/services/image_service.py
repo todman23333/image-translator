@@ -1,7 +1,7 @@
 from PIL import Image, ImageDraw, ImageFont
 import cv2
 import numpy as np
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 import os
 import re
 
@@ -252,7 +252,9 @@ class ImageService:
         draw = ImageDraw.Draw(result_img)
 
         # 修复7: 检测重叠区域并排序处理
-        regions_with_style = self._sort_regions_by_priority(regions_with_style)
+        regions_with_style = self._sort_regions_by_priority(
+            regions_with_style, image.height
+        )
         drawn_regions = []  # 记录已绘制的区域
 
         # 首先清除所有文字区域（使用背景色填充）
@@ -311,19 +313,38 @@ class ImageService:
         result_img.save(output_path, quality=95)
         print(f"✅ 重绘完成: {output_path}")
 
-    def _sort_regions_by_priority(self, regions_with_style: List[Dict]) -> List[Dict]:
-        """按优先级排序区域（图例优先，大的区域优先）"""
+    def _sort_regions_by_priority(
+        self, regions_with_style: List[Dict], img_height: int
+    ) -> List[Dict]:
+        """按优先级排序区域（图例优先，大的区域优先，底部区域靠后）"""
 
         def get_priority(item):
             style = item["style"]
             bbox = item["region"]["bbox"]
             x_coords = [p[0] for p in bbox]
             y_coords = [p[1] for p in bbox]
-            area = (max(x_coords) - min(x_coords)) * (max(y_coords) - min(y_coords))
+            x1, x2 = min(x_coords), max(x_coords)
+            y1, y2 = min(y_coords), max(y_coords)
+            area = (x2 - x1) * (y2 - y1)
 
-            # 图例优先，大面积优先
+            # 检测区域类型
             is_legend = style.get("is_legend", False)
-            return (not is_legend, -area)  # 图例在前，面积大的在前
+            is_bottom = y1 > img_height * 0.75  # 底部区域
+            is_chart_area = 0.3 < (y1 / img_height) < 0.75  # 图表中部区域
+
+            # 优先级：图例 > 顶部标题 > 图表区域 > 底部区域
+            # 底部区域应该分散绘制，避免重叠
+            priority = 0
+            if is_legend:
+                priority = 0
+            elif y1 < img_height * 0.15:
+                priority = 1  # 顶部
+            elif is_chart_area:
+                priority = 2  # 中部图表
+            elif is_bottom:
+                priority = 3  # 底部
+
+            return (priority, -area)  # 优先级小的在前，同优先级大面积在前
 
         return sorted(regions_with_style, key=get_priority)
 
@@ -331,9 +352,9 @@ class ImageService:
         self,
         bbox: List[List[int]],
         drawn_regions: List[List[List[int]]],
-        threshold: float = 0.3,
+        threshold: float = 0.1,  # 降低阈值，更严格
     ) -> bool:
-        """检查是否与已绘制区域重叠"""
+        """检查是否与已绘制区域重叠 - 改进版"""
         x_coords = [p[0] for p in bbox]
         y_coords = [p[1] for p in bbox]
         x1, x2 = min(x_coords), max(x_coords)
@@ -341,11 +362,24 @@ class ImageService:
 
         area = (x2 - x1) * (y2 - y1)
 
+        # 扩大检查区域，考虑文字实际占用空间
+        margin = 5  # 增加边距避免文字太挤
+        x1 -= margin
+        x2 += margin
+        y1 -= margin
+        y2 += margin
+
         for drawn_bbox in drawn_regions:
             dx_coords = [p[0] for p in drawn_bbox]
             dy_coords = [p[1] for p in drawn_bbox]
             dx1, dx2 = min(dx_coords), max(dx_coords)
             dy1, dy2 = min(dy_coords), max(dy_coords)
+
+            # 同样扩大已绘制区域
+            dx1 -= margin
+            dx2 += margin
+            dy1 -= margin
+            dy2 += margin
 
             # 计算重叠面积
             overlap_x = max(0, min(x2, dx2) - max(x1, dx1))
@@ -379,10 +413,13 @@ class ImageService:
         region_height = y2 - y1
 
         # 修复: 检测底部区域并调整
-        is_bottom_region = bool(img_height and y1 > img_height * 0.8)
+        is_bottom_region = bool(img_height and y1 > img_height * 0.75)
         if is_bottom_region:
-            # 底部区域增加额外空间
+            # 底部区域增加额外空间（宽度和高度）
+            region_width = int(region_width * 2.0)  # 增加宽度空间
             region_height = int(region_height * 1.5)
+            # 缩写文本以适应空间
+            text = self._abbreviate_text(text, is_bottom_region)
 
         # 修复1&6: 智能字体大小调整和自动换行
         font_size, lines = self._calculate_optimal_font_and_lines(
@@ -493,6 +530,44 @@ class ImageService:
 
         for wrong, correct in corrections.items():
             text = text.replace(wrong, correct)
+
+        return text
+
+    def _abbreviate_text(self, text: str, is_bottom: bool = False) -> str:
+        """智能缩写长文本"""
+        if not is_bottom:
+            return text
+
+        # 底部区域文本缩写规则
+        abbreviations = {
+            "Battery pack draws power from the grid": "Battery from grid",
+            "Battery pack discharging": "Battery discharging",
+            "Battery pack draws power from PV": "Battery from PV",
+            "Battery pack standby": "Battery standby",
+            "The load purchases electricity from the grid": "Load from grid",
+            "The load draws power from the battery pack": "Load from battery",
+            "The load draws power from the PV": "Load from PV",
+            "The load draws power from the grid": "Load from grid",
+            "PV charges the battery pack": "PV charges battery",
+            "PV generates electricity and sells it to the grid": "PV sells to grid",
+            "PV generates electricity to sell to the power grid": "PV sells to grid",
+            "Photovoltaic power generation curve": "PV generation curve",
+            "Electricity consumption curve of household appliances": "Household consumption curve",
+            "Charging Period": "Charging",
+            "Discharge period": "Discharging",
+            "Non-charging and non-discharging period": "Standby period",
+        }
+
+        # 尝试精确匹配
+        if text in abbreviations:
+            return abbreviations[text]
+
+        # 通用缩写规则
+        text = text.replace("draws power from", "from")
+        text = text.replace("purchases electricity from", "from")
+        text = text.replace("the battery pack", "battery")
+        text = text.replace("the power grid", "grid")
+        text = text.replace("electricity and sells it to", "sells to")
 
         return text
 
