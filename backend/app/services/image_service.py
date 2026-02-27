@@ -432,8 +432,11 @@ class ImageService:
         region_width = x2 - x1
         region_height = y2 - y1
 
-        # 修复: 检测底部区域
+        # 修复: 检测区域类型
         is_bottom_region = bool(img_height and y1 > img_height * 0.75)
+        is_chart_area = bool(
+            img_height and 0.2 < (y1 / img_height) < 0.75 and not is_legend
+        )
 
         # 修复1&6: 智能字体大小调整和自动换行
         # 图例区域使用统一字体大小
@@ -444,6 +447,7 @@ class ImageService:
             style["font_size"],
             is_bottom_region,
             is_legend,
+            is_chart_area,
         )
 
         if not lines or (len(lines) == 1 and not lines[0].strip()):
@@ -493,8 +497,9 @@ class ImageService:
         original_font_size: int,
         is_bottom_region: bool = False,
         is_legend: bool = False,
+        is_chart_area: bool = False,
     ) -> Tuple[int, List[str]]:
-        """修复1: 计算最优字体大小和自动换行 - 改进版V6（图例统一字号）"""
+        """修复1: 计算最优字体大小和自动换行 - 改进版V7（图例和图表区统一字号）"""
 
         # 修复术语翻译问题
         text = self._fix_translation_terms(text)
@@ -507,6 +512,21 @@ class ImageService:
             # 图例区域允许溢出，不换行
             lines = [text]
             return legend_font_size, lines
+
+        # 图表中间区域：使用统一的字体大小（14px），允许换行
+        if is_chart_area:
+            chart_font_size = 14
+            font = self._get_font(chart_font_size)
+            # 图表区域允许换行
+            lines = self._wrap_text_to_lines(text, int(region_width * 1.2), font)
+            # 如果行数太多，尝试缩写
+            if len(lines) > 2:
+                short_text = self._abbreviate_text(text, True)
+                if short_text != text:
+                    lines = self._wrap_text_to_lines(
+                        short_text, int(region_width * 1.2), font
+                    )
+            return chart_font_size, lines
 
         # 底部区域使用更紧凑的设置
         if is_bottom_region:
