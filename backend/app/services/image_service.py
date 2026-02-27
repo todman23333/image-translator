@@ -515,18 +515,26 @@ class ImageService:
 
         # 图表中间区域：使用统一的字体大小（14px），允许换行
         if is_chart_area:
-            chart_font_size = 14
-            font = self._get_font(chart_font_size)
-            # 图表区域允许换行
-            lines = self._wrap_text_to_lines(text, int(region_width * 1.2), font)
-            # 如果行数太多，尝试缩写
-            if len(lines) > 2:
-                short_text = self._abbreviate_text(text, True)
-                if short_text != text:
-                    lines = self._wrap_text_to_lines(
-                        short_text, int(region_width * 1.2), font
-                    )
-            return chart_font_size, lines
+            # 图表区域先尝试14px，如果放不下就减小字体
+            for chart_font_size in [14, 12, 10, 8]:
+                font = self._get_font(chart_font_size)
+                # 使用实际区域宽度进行换行计算
+                lines = self._wrap_text_to_lines(text, region_width, font)
+                # 检查是否所有行都在宽度范围内
+                all_fit = all(
+                    ImageDraw.Draw(Image.new("RGB", (1, 1))).textbbox(
+                        (0, 0), line, font=font
+                    )[2]
+                    <= region_width
+                    for line in lines
+                )
+                if all_fit:
+                    return chart_font_size, lines
+            # 如果还是放不下，尝试缩写
+            short_text = self._abbreviate_text(text, True)
+            font = self._get_font(8)
+            lines = self._wrap_text_to_lines(short_text, region_width, font)
+            return 8, lines
 
         # 底部区域使用更紧凑的设置
         if is_bottom_region:
