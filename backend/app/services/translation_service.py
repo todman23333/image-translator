@@ -14,25 +14,14 @@ class TranslationService:
         self.model = "qwen-turbo"  # 可以使用 qwen-turbo, qwen-plus, qwen-max
 
     def _abbreviate_before_translate(self, text: str) -> str:
-        """翻译前缩写中文原文"""
-        abbreviations = {
-            "负载从电池包取电": "负载从电池取电",
-            "负载从电网和电池包取电": "负载从电网电池取电",
-            "负载从电网买电": "负载买电",
-            "负载从PV取电": "负载从光伏取电",
-            "PV给电池包充电": "光伏充电",
-            "PV发电卖给电网": "光伏卖电",
-            "家用电器消耗电能曲线": "用电曲线",
-        }
-
-        # 尝试精确匹配
-        if text in abbreviations:
-            return abbreviations[text]
-
-        # 尝试包含匹配
-        for full, short in abbreviations.items():
-            if full in text:
-                return text.replace(full, short)
+        """翻译前缩写中文原文 - 更激进"""
+        # 更激进的缩写
+        text = text.replace("电池包", "电池")
+        text = text.replace("电网", "电网")
+        text = text.replace("家用电器", "家电")
+        text = text.replace("消耗电能", "用电")
+        text = text.replace("发电曲线", "发曲线")
+        text = text.replace("光伏发电", "光伏")
 
         return text
 
