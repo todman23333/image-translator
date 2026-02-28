@@ -304,6 +304,7 @@ class ImageService:
                 y1 = min(y_coords)
                 is_bottom = y1 > image.height * 0.75
                 is_legend = style.get("is_legend", False)
+                is_chart_area = (y1 / image.height) < 0.75 and not is_legend
 
                 # 检查是否与已绘制区域重叠
                 # 底部区域放宽检测，避免丢失文字
@@ -322,6 +323,7 @@ class ImageService:
                     style,
                     image.height,
                     is_legend,
+                    is_chart_area,
                 )
                 drawn_regions.append(region["bbox"])
 
@@ -421,6 +423,7 @@ class ImageService:
         style: Dict,
         img_height: Optional[int] = None,
         is_legend: bool = False,
+        is_chart_area: bool = False,
     ):
         """在指定区域绘制文字 - 全面改进版V3"""
         # 计算边界框
