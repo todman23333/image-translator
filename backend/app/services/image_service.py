@@ -638,9 +638,27 @@ class ImageService:
 
         # 通用缩写规则（更激进 - 图表区域优先处理）
         if is_chart:
-            # 图表区域强制缩写
+            # 图表区域强制缩写 - 支持中英文
+            # 中文原文缩写
+            if "负载" in text and "电池包" in text:
+                text = "负载从电池包取电"
+            elif "负载" in text and "电网" in text and "电池包" in text:
+                text = "负载从电网和电池包取电"
+            elif "负载" in text and "电网" in text:
+                text = "负载从电网买电"
+            elif "PV" in text and "电池包" in text and "充电" in text:
+                text = "PV给电池包充电"
+            elif "PV" in text and "电网" in text and "卖" in text:
+                text = "PV发电卖给电网"
+            # 英文译文缩写
             if "load" in text.lower() and "battery" in text.lower():
                 text = "Load from battery"
+            elif (
+                "load" in text.lower()
+                and "grid" in text.lower()
+                and "battery" in text.lower()
+            ):
+                text = "Load from grid & battery"
             elif "load" in text.lower() and "grid" in text.lower():
                 text = "Load from grid"
             elif "pv" in text.lower() and "sells" in text.lower():
