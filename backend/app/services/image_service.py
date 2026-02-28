@@ -515,10 +515,10 @@ class ImageService:
 
         # 图表中间区域：使用统一的字体大小（14px），允许换行
         if is_chart_area:
-            # 图表区域：使用原始字体大小，确保不超出区域边界
-            # 从较大字体开始尝试，找到能放入的最大字体
-            font_size = min(original_font_size, 16)
-            min_font_size = 8
+            # 图表区域：使用更小的字体和更积极的换行
+            # 从16开始尝试，逐步减小直到能放入
+            font_size = 16
+            min_font_size = 6
 
             best_font_size = min_font_size
             best_lines = [text]
@@ -527,6 +527,7 @@ class ImageService:
                 font = self._get_font(fs)
                 # 积极换行：使用区域宽度限制
                 lines = self._wrap_text_to_lines(text, region_width, font)
+
                 # 检查所有行是否都在边界内
                 all_fit = True
                 for line in lines:
@@ -541,9 +542,10 @@ class ImageService:
                     best_font_size = fs
                     best_lines = lines
                     break
-                # 如果当前字号放不下，增加换行
-                best_font_size = fs
-                best_lines = lines
+                else:
+                    # 保存当前尝试的结果
+                    best_font_size = fs
+                    best_lines = lines
 
             return best_font_size, best_lines
 
