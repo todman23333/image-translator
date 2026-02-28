@@ -491,23 +491,6 @@ class ImageService:
 
             y = start_y + i * line_height
 
-            # 最终强制缩写
-            line = re.sub(
-                r"(?i)\bThe load draws power from the battery\b\.?", "Load bat", line
-            )
-            line = re.sub(
-                r"(?i)\bThe load draws power from the grid and the battery\b\.?",
-                "Load grid+bat",
-                line,
-            )
-            line = re.sub(
-                r"(?i)\bThe load draws power from the grid\b\.?", "Load grid", line
-            )
-            line = re.sub(
-                r"(?i)\bThe load draws power from the PV\b\.?", "Load PV", line
-            )
-            line = re.sub(r"(?i)\bPV charges the battery\b\.?", "PV bat", line)
-
             # 绘制文字
             draw.text((x, y), line, font=font, fill=text_color)
 
@@ -526,21 +509,6 @@ class ImageService:
         # 修复术语翻译问题
         text = self._fix_translation_terms(text)
 
-        # 强制缩写 - 移除单词边界以匹配句点
-        original_text = text
-        text = text.replace("The load draws power from the battery.", "Load bat")
-        text = text.replace("The load draws power from the battery", "Load bat")
-        text = text.replace(
-            "The load draws power from the grid and the battery", "Load grid+bat"
-        )
-        text = text.replace("The load draws power from the grid", "Load grid")
-        text = text.replace("The load draws power from the PV", "Load PV")
-        text = text.replace("PV charges the battery", "PV bat")
-        text = text.replace("PV generates electricity to sell to the grid", "PV sell")
-
-        if original_text != text:
-            print(f"[ABBREV] '{original_text}' -> '{text}'")
-
         # 图例区域：使用统一的字体大小（16px）
         if is_legend:
             legend_font_size = 16
@@ -551,16 +519,6 @@ class ImageService:
 
         # 图表中间区域：使用更小的字体和积极换行
         if is_chart_area:
-            print(f"[CHART] Before: {text[:50]}")
-            text = re.sub(r"(?i)The load draws power from the PV", "Load PV", text)
-            text = re.sub(
-                r"(?i)The load purchases electricity from the grid", "Load grid", text
-            )
-            text = re.sub(r"(?i)PV charges the battery", "PV bat", text)
-            text = re.sub(
-                r"(?i)PV generates electricity to sell to the grid", "PV sell", text
-            )
-
             # 从16开始尝试，逐步减小直到能放入
             font_size = 16
             min_font_size = 6
