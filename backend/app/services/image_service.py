@@ -636,7 +636,18 @@ class ImageService:
         if not is_bottom and not is_chart:
             return text
 
-        # 通用缩写规则（更激进）
+        # 通用缩写规则（更激进 - 图表区域优先处理）
+        if is_chart:
+            # 图表区域强制缩写
+            if "load" in text.lower() and "battery" in text.lower():
+                text = "Load from battery"
+            elif "load" in text.lower() and "grid" in text.lower():
+                text = "Load from grid"
+            elif "pv" in text.lower() and "sells" in text.lower():
+                text = "PV sells to grid"
+            elif "pv" in text.lower() and "charges" in text.lower():
+                text = "PV charges battery"
+
         replacements = [
             ("draws power from", "from"),
             ("purchases electricity from", "from"),
