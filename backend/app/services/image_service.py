@@ -506,13 +506,24 @@ class ImageService:
         # 修复术语翻译问题
         text = self._fix_translation_terms(text)
 
-        # 图例区域：使用统一的字体大小
+        # 图例区域：使用统一的字体大小（16px），但也需要缩写
         if is_legend:
-            # 图例统一使用16px字体
+            # 先缩写
+            text = re.sub(
+                r"(?i)The load draws power from the battery", "Load bat", text
+            )
+            text = re.sub(
+                r"(?i)The load draws power from the grid and the battery",
+                "Load grid+bat",
+                text,
+            )
+            text = re.sub(r"(?i)The load draws power from the grid", "Load grid", text)
+            text = re.sub(r"(?i)PV charges the battery", "PV bat", text)
+
             legend_font_size = 16
             font = self._get_font(legend_font_size)
-            # 图例区域允许溢出，不换行
-            lines = [text]
+            # 图例区域允许换行
+            lines = self._wrap_text_to_lines(text, region_width, font)
             return legend_font_size, lines
 
         # 图表中间区域：使用更小的字体和积极换行
