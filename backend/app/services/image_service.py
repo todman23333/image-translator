@@ -349,7 +349,7 @@ class ImageService:
             # 检测区域类型
             is_legend = style.get("is_legend", False)
             is_bottom = y1 > img_height * 0.75  # 底部区域
-            is_chart_area = 0.3 < (y1 / img_height) < 0.75  # 图表中部区域
+            is_chart_area = (y1 / img_height) < 0.75  # 图表区域（顶部+中间）
 
             # 优先级：图例 > 顶部标题 > 图表区域 > 底部区域
             # 底部区域应该分散绘制，避免重叠
@@ -432,11 +432,10 @@ class ImageService:
         region_width = x2 - x1
         region_height = y2 - y1
 
-        # 修复: 检测区域类型
+        # 修复: 检测区域类型 - 扩大图表区域范围，包含顶部
         is_bottom_region = bool(img_height and y1 > img_height * 0.75)
-        is_chart_area = bool(
-            img_height and 0.2 < (y1 / img_height) < 0.75 and not is_legend
-        )
+        # 图表区域：顶部和中间区域（y < 75%）都需要缩写
+        is_chart_area = bool(img_height and (y1 / img_height) < 0.75 and not is_legend)
 
         # 修复1&6: 智能字体大小调整和自动换行
         # 图例区域使用统一字体大小
