@@ -636,7 +636,7 @@ class ImageService:
         if not is_bottom and not is_chart:
             return text
 
-        # 通用缩写规则（先应用）
+        # 通用缩写规则（更激进）
         replacements = [
             ("draws power from", "from"),
             ("purchases electricity from", "from"),
@@ -644,14 +644,14 @@ class ImageService:
             ("the power grid", "grid"),
             ("generates electricity and sells it to", "sells to"),
             ("generates electricity to sell to", "sells to"),
-            (
-                "Electricity consumption curve of household appliances",
-                "Household consumption",
-            ),
+            ("sells electricity to", "sells to"),
+            ("Electricity consumption curve of household appliances", "Household load"),
             ("Photovoltaic power generation curve", "PV curve"),
             ("Charging Period", "Charging"),
-            ("Discharge period", "Discharging"),
+            ("Discharge period", "Discharge"),
             ("Non-charging and non-discharging period", "Standby"),
+            ("and the battery pack", ""),
+            ("and from the", "from"),
         ]
 
         for old, new in replacements:
