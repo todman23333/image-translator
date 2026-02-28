@@ -477,7 +477,10 @@ class ImageService:
             line_width = bbox_line[2] - bbox_line[0]
 
             # 根据对齐方式计算x位置
-            if style["alignment"] == "center":
+            # 图表区域强制使用左对齐，确保不超出右边界
+            if is_chart_area:
+                x = x1
+            elif style["alignment"] == "center":
                 x = x1 + (region_width - line_width) / 2
             elif style["alignment"] == "right":
                 x = x2 - line_width
@@ -513,9 +516,13 @@ class ImageService:
             lines = [text]
             return legend_font_size, lines
 
-        # 图表中间区域：使用统一的字体大小（14px），允许换行
+        # 图表中间区域：使用更小的字体和积极换行
         if is_chart_area:
-            # 图表区域：使用更小的字体和更积极的换行
+            # 首先尝试缩写
+            short_text = self._abbreviate_text(text, False, True)
+            if short_text != text:
+                text = short_text
+
             # 从16开始尝试，逐步减小直到能放入
             font_size = 16
             min_font_size = 6
@@ -622,26 +629,31 @@ class ImageService:
 
         return text
 
-    def _abbreviate_text(self, text: str, is_bottom: bool = False) -> str:
+    def _abbreviate_text(
+        self, text: str, is_bottom: bool = False, is_chart: bool = False
+    ) -> str:
         """智能缩写长文本"""
-        if not is_bottom:
+        if not is_bottom and not is_chart:
             return text
 
-        # 底部区域文本缩写规则
+        # 图表区域和底部区域文本缩写规则
         abbreviations = {
+            # 底部区域
             "Battery pack draws power from the grid": "Battery from grid",
             "Battery pack discharging": "Battery discharging",
             "Battery pack draws power from PV": "Battery from PV",
             "Battery pack standby": "Battery standby",
-            "The load purchases electricity from the grid": "Load from grid",
+            # 图表区域
             "The load draws power from the battery pack": "Load from battery",
-            "The load draws power from the PV": "Load from PV",
+            "The load draws power from the grid and the battery pack": "Load from grid & battery",
             "The load draws power from the grid": "Load from grid",
-            "PV charges the battery pack": "PV charges battery",
-            "PV generates electricity and sells it to the grid": "PV sells to grid",
+            "The load draws power from the PV": "Load from PV",
             "PV generates electricity to sell to the power grid": "PV sells to grid",
+            "PV generates electricity and sells it to the grid": "PV sells to grid",
+            "PV charges the battery pack": "PV charges battery",
+            "The load purchases electricity from the power grid": "Load from grid",
             "Photovoltaic power generation curve": "PV generation curve",
-            "Electricity consumption curve of household appliances": "Household consumption curve",
+            "Electricity consumption curve of household appliances": "Household consumption",
             "Charging Period": "Charging",
             "Discharge period": "Discharging",
             "Non-charging and non-discharging period": "Standby period",
