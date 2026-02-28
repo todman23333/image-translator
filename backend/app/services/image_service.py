@@ -517,11 +517,11 @@ class ImageService:
             lines = self._wrap_text_to_lines(text, region_width, font)
             return legend_font_size, lines
 
-        # 图表中间区域：使用更小的字体和积极换行
+        # 图表中间区域：使用换行而不是缩小字体
         if is_chart_area:
-            # 从16开始尝试，逐步减小直到能放入
+            # 使用12px作为最小字体，允许换行
             font_size = 16
-            min_font_size = 6
+            min_font_size = 12  # 保持12px最小字体
 
             best_font_size = min_font_size
             best_lines = [text]
@@ -531,7 +531,7 @@ class ImageService:
                 # 积极换行：使用区域宽度限制
                 lines = self._wrap_text_to_lines(text, region_width, font)
 
-                # 检查所有行是否都在边界内
+                # 检查每行是否都在边界内
                 all_fit = True
                 for line in lines:
                     line_bbox = ImageDraw.Draw(Image.new("RGB", (1, 1))).textbbox(
