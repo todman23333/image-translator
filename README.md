@@ -41,16 +41,9 @@ docker-compose up -d
 
 # 等待服务启动（首次启动需要下载模型，大约需要3-5分钟）
 ```
-
-### 访问应用
-
-- **前端界面**：http://localhost:3000
-- **后端API**：http://localhost:8000
-- **API文档**：http://localhost:8000/docs
-
 ## 使用说明
 
-1. 打开 http://localhost:3000
+1. 打开 http://localhost:8000
 2. 选择源语言（可选）和目标语言
 3. 上传图片或拖拽图片到上传区域
 4. 等待处理完成（通常10-30秒）
