@@ -488,7 +488,24 @@ class ImageService:
 
             y = start_y + i * line_height
 
-            # 绘制文字（底部区域也要确保显示至少第一行）
+            # 最终强制缩写
+            line = re.sub(
+                r"(?i)\bThe load draws power from the battery\b\.?", "Load bat", line
+            )
+            line = re.sub(
+                r"(?i)\bThe load draws power from the grid and the battery\b\.?",
+                "Load grid+bat",
+                line,
+            )
+            line = re.sub(
+                r"(?i)\bThe load draws power from the grid\b\.?", "Load grid", line
+            )
+            line = re.sub(
+                r"(?i)\bThe load draws power from the PV\b\.?", "Load PV", line
+            )
+            line = re.sub(r"(?i)\bPV charges the battery\b\.?", "PV bat", line)
+
+            # 绘制文字
             draw.text((x, y), line, font=font, fill=text_color)
 
     def _calculate_optimal_font_and_lines(
@@ -507,6 +524,7 @@ class ImageService:
         text = self._fix_translation_terms(text)
 
         # 强制缩写 - 在任何区域检查之前先缩写
+        original_text = text
         text = re.sub(
             r"(?i)\bThe load draws power from the battery\b\.?", "Load bat", text
         )
@@ -523,6 +541,9 @@ class ImageService:
         text = re.sub(
             r"(?i)\bPV generates electricity to sell to the grid\b\.?", "PV sell", text
         )
+
+        if original_text != text:
+            print(f"[ABBREV] '{original_text}' -> '{text}'")
 
         # 图例区域：使用统一的字体大小（16px）
         if is_legend:
