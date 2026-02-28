@@ -506,20 +506,26 @@ class ImageService:
         # 修复术语翻译问题
         text = self._fix_translation_terms(text)
 
-        # 图例区域：使用统一的字体大小（16px），但也需要缩写
-        if is_legend:
-            # 先缩写
-            text = re.sub(
-                r"(?i)The load draws power from the battery", "Load bat", text
-            )
-            text = re.sub(
-                r"(?i)The load draws power from the grid and the battery",
-                "Load grid+bat",
-                text,
-            )
-            text = re.sub(r"(?i)The load draws power from the grid", "Load grid", text)
-            text = re.sub(r"(?i)PV charges the battery", "PV bat", text)
+        # 强制缩写 - 在任何区域检查之前先缩写
+        text = re.sub(
+            r"(?i)\bThe load draws power from the battery\b\.?", "Load bat", text
+        )
+        text = re.sub(
+            r"(?i)\bThe load draws power from the grid and the battery\b\.?",
+            "Load grid+bat",
+            text,
+        )
+        text = re.sub(
+            r"(?i)\bThe load draws power from the grid\b\.?", "Load grid", text
+        )
+        text = re.sub(r"(?i)\bThe load draws power from the PV\b\.?", "Load PV", text)
+        text = re.sub(r"(?i)\bPV charges the battery\b\.?", "PV bat", text)
+        text = re.sub(
+            r"(?i)\bPV generates electricity to sell to the grid\b\.?", "PV sell", text
+        )
 
+        # 图例区域：使用统一的字体大小（16px）
+        if is_legend:
             legend_font_size = 16
             font = self._get_font(legend_font_size)
             # 图例区域允许换行
@@ -528,16 +534,6 @@ class ImageService:
 
         # 图表中间区域：使用更小的字体和积极换行
         if is_chart_area:
-            # 强制缩写 - 直接替换所有 "draws power from" 相关短语
-            text = re.sub(
-                r"(?i)The load draws power from the battery", "Load bat", text
-            )
-            text = re.sub(
-                r"(?i)The load draws power from the grid and the battery",
-                "Load grid+bat",
-                text,
-            )
-            text = re.sub(r"(?i)The load draws power from the grid", "Load grid", text)
             text = re.sub(r"(?i)The load draws power from the PV", "Load PV", text)
             text = re.sub(
                 r"(?i)The load purchases electricity from the grid", "Load grid", text
