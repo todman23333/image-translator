@@ -517,10 +517,24 @@ class ImageService:
 
         # 图表中间区域：使用更小的字体和积极换行
         if is_chart_area:
-            # 首先尝试缩写
-            short_text = self._abbreviate_text(text, False, True)
-            if short_text != text:
-                text = short_text
+            # 强制缩写 - 直接替换所有 "draws power from" 相关短语
+            text = re.sub(
+                r"(?i)The load draws power from the battery", "Load bat", text
+            )
+            text = re.sub(
+                r"(?i)The load draws power from the grid and the battery",
+                "Load grid+bat",
+                text,
+            )
+            text = re.sub(r"(?i)The load draws power from the grid", "Load grid", text)
+            text = re.sub(r"(?i)The load draws power from the PV", "Load PV", text)
+            text = re.sub(
+                r"(?i)The load purchases electricity from the grid", "Load grid", text
+            )
+            text = re.sub(r"(?i)PV charges the battery", "PV bat", text)
+            text = re.sub(
+                r"(?i)PV generates electricity to sell to the grid", "PV sell", text
+            )
 
             # 从16开始尝试，逐步减小直到能放入
             font_size = 16
