@@ -515,26 +515,37 @@ class ImageService:
 
         # 图表中间区域：使用统一的字体大小（14px），允许换行
         if is_chart_area:
-            # 图表区域先尝试14px，如果放不下就减小字体
-            for chart_font_size in [14, 12, 10, 8]:
-                font = self._get_font(chart_font_size)
-                # 使用实际区域宽度进行换行计算
+            # 图表区域：使用原始字体大小，确保不超出区域边界
+            # 从较大字体开始尝试，找到能放入的最大字体
+            font_size = min(original_font_size, 16)
+            min_font_size = 8
+
+            best_font_size = min_font_size
+            best_lines = [text]
+
+            for fs in range(font_size, min_font_size - 1, -1):
+                font = self._get_font(fs)
+                # 积极换行：使用区域宽度限制
                 lines = self._wrap_text_to_lines(text, region_width, font)
-                # 检查是否所有行都在宽度范围内
-                all_fit = all(
-                    ImageDraw.Draw(Image.new("RGB", (1, 1))).textbbox(
+                # 检查所有行是否都在边界内
+                all_fit = True
+                for line in lines:
+                    line_bbox = ImageDraw.Draw(Image.new("RGB", (1, 1))).textbbox(
                         (0, 0), line, font=font
-                    )[2]
-                    <= region_width
-                    for line in lines
-                )
+                    )
+                    if line_bbox[2] > region_width:
+                        all_fit = False
+                        break
+
                 if all_fit:
-                    return chart_font_size, lines
-            # 如果还是放不下，尝试缩写
-            short_text = self._abbreviate_text(text, True)
-            font = self._get_font(8)
-            lines = self._wrap_text_to_lines(short_text, region_width, font)
-            return 8, lines
+                    best_font_size = fs
+                    best_lines = lines
+                    break
+                # 如果当前字号放不下，增加换行
+                best_font_size = fs
+                best_lines = lines
+
+            return best_font_size, best_lines
 
         # 底部区域使用更紧凑的设置
         if is_bottom_region:
