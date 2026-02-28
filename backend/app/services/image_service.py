@@ -638,33 +638,29 @@ class ImageService:
 
         # 通用缩写规则（更激进 - 图表区域优先处理）
         if is_chart:
-            # 图表区域强制缩写 - 支持中英文
-            # 中文原文缩写
-            if "负载" in text and "电池包" in text:
-                text = "负载从电池包取电"
-            elif "负载" in text and "电网" in text and "电池包" in text:
-                text = "负载从电网和电池包取电"
-            elif "负载" in text and "电网" in text:
-                text = "负载从电网买电"
-            elif "PV" in text and "电池包" in text and "充电" in text:
-                text = "PV给电池包充电"
-            elif "PV" in text and "电网" in text and "卖" in text:
-                text = "PV发电卖给电网"
-            # 英文译文缩写
-            if "load" in text.lower() and "battery" in text.lower():
-                text = "Load from battery"
-            elif (
-                "load" in text.lower()
-                and "grid" in text.lower()
-                and "battery" in text.lower()
-            ):
-                text = "Load from grid & battery"
-            elif "load" in text.lower() and "grid" in text.lower():
-                text = "Load from grid"
-            elif "pv" in text.lower() and "sells" in text.lower():
-                text = "PV sells to grid"
-            elif "pv" in text.lower() and "charges" in text.lower():
-                text = "PV charges battery"
+            # 图表区域强制缩写 - 英文缩写（最终手段）
+            # 这是在翻译之后应用的，所以不管翻译API返回什么，我们都会缩写
+            text = text.replace("The load draws power from the battery", "Load bat")
+            text = text.replace("the load draws power from the battery", "Load bat")
+            text = text.replace("draws power from the battery", "from battery")
+            text = text.replace(
+                "The load draws power from the grid and the battery", "Load grid+bat"
+            )
+            text = text.replace(
+                "draws power from the grid and the battery", "from grid+bat"
+            )
+            text = text.replace("The load draws power from the grid", "Load grid")
+            text = text.replace(
+                "The load purchases electricity from the grid", "Load grid"
+            )
+            text = text.replace("purchases electricity from the grid", "from grid")
+            text = text.replace("PV charges the battery", "PV bat")
+            text = text.replace(
+                "PV generates electricity to sell to the grid", "PV grid"
+            )
+            text = text.replace(
+                "generates electricity and sells it to the grid", "sells to grid"
+            )
 
         replacements = [
             ("draws power from", "from"),
