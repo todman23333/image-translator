@@ -636,39 +636,26 @@ class ImageService:
         if not is_bottom and not is_chart:
             return text
 
-        # 图表区域和底部区域文本缩写规则
-        abbreviations = {
-            # 底部区域
-            "Battery pack draws power from the grid": "Battery from grid",
-            "Battery pack discharging": "Battery discharging",
-            "Battery pack draws power from PV": "Battery from PV",
-            "Battery pack standby": "Battery standby",
-            # 图表区域
-            "The load draws power from the battery pack": "Load from battery",
-            "The load draws power from the grid and the battery pack": "Load from grid & battery",
-            "The load draws power from the grid": "Load from grid",
-            "The load draws power from the PV": "Load from PV",
-            "PV generates electricity to sell to the power grid": "PV sells to grid",
-            "PV generates electricity and sells it to the grid": "PV sells to grid",
-            "PV charges the battery pack": "PV charges battery",
-            "The load purchases electricity from the power grid": "Load from grid",
-            "Photovoltaic power generation curve": "PV generation curve",
-            "Electricity consumption curve of household appliances": "Household consumption",
-            "Charging Period": "Charging",
-            "Discharge period": "Discharging",
-            "Non-charging and non-discharging period": "Standby period",
-        }
+        # 通用缩写规则（先应用）
+        replacements = [
+            ("draws power from", "from"),
+            ("purchases electricity from", "from"),
+            ("the battery pack", "battery"),
+            ("the power grid", "grid"),
+            ("generates electricity and sells it to", "sells to"),
+            ("generates electricity to sell to", "sells to"),
+            (
+                "Electricity consumption curve of household appliances",
+                "Household consumption",
+            ),
+            ("Photovoltaic power generation curve", "PV curve"),
+            ("Charging Period", "Charging"),
+            ("Discharge period", "Discharging"),
+            ("Non-charging and non-discharging period", "Standby"),
+        ]
 
-        # 尝试精确匹配
-        if text in abbreviations:
-            return abbreviations[text]
-
-        # 通用缩写规则
-        text = text.replace("draws power from", "from")
-        text = text.replace("purchases electricity from", "from")
-        text = text.replace("the battery pack", "battery")
-        text = text.replace("the power grid", "grid")
-        text = text.replace("electricity and sells it to", "sells to")
+        for old, new in replacements:
+            text = text.replace(old, new)
 
         return text
 
