@@ -15,7 +15,7 @@
 ### 后端
 - **框架**：FastAPI (Python)
 - **OCR**：PaddleOCR（免费开源，无需API Key）
-- **翻译**：Google Translate API
+- **翻译**：Alibaba DashScope Qwen API
 - **图像处理**：Pillow + OpenCV
 
 ### 前端
