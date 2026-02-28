@@ -304,7 +304,8 @@ class ImageService:
                 y1 = min(y_coords)
                 is_bottom = y1 > image.height * 0.75
                 is_legend = style.get("is_legend", False)
-                is_chart_area = (y1 / image.height) < 0.75 and not is_legend
+                is_chart_area = 0.15 < (y1 / image.height) < 0.75 and not is_legend
+                is_top_area = (y1 / image.height) < 0.15
 
                 # 检查是否与已绘制区域重叠
                 # 底部区域放宽检测，避免丢失文字
@@ -324,6 +325,7 @@ class ImageService:
                     image.height,
                     is_legend,
                     is_chart_area,
+                    is_top_area,
                 )
                 drawn_regions.append(region["bbox"])
 
@@ -424,6 +426,7 @@ class ImageService:
         img_height: Optional[int] = None,
         is_legend: bool = False,
         is_chart_area: bool = False,
+        is_top_area: bool = False,
     ):
         """在指定区域绘制文字 - 全面改进版V3"""
         # 计算边界框
@@ -435,10 +438,13 @@ class ImageService:
         region_width = x2 - x1
         region_height = y2 - y1
 
-        # 修复: 检测区域类型 - 扩大图表区域范围，包含顶部
+        # 修复: 检测区域类型 - 图表区域只包含中间部分
         is_bottom_region = bool(img_height and y1 > img_height * 0.75)
-        # 图表区域：顶部和中间区域（y < 75%）都需要缩写
-        is_chart_area = bool(img_height and (y1 / img_height) < 0.75 and not is_legend)
+        # 图表区域：中间区域（15% < y < 75%）需要换行，顶部（y < 15%）不换行
+        is_chart_area = bool(
+            img_height and 0.15 < (y1 / img_height) < 0.75 and not is_legend
+        )
+        is_top_area = bool(img_height and (y1 / img_height) < 0.15)
 
         # 修复1&6: 智能字体大小调整和自动换行
         # 图例区域使用统一字体大小
@@ -503,18 +509,19 @@ class ImageService:
         is_bottom_region: bool = False,
         is_legend: bool = False,
         is_chart_area: bool = False,
+        is_top_area: bool = False,
     ) -> Tuple[int, List[str]]:
         """修复1: 计算最优字体大小和自动换行 - 改进版V7（图例和图表区统一字号）"""
 
         # 修复术语翻译问题
         text = self._fix_translation_terms(text)
 
-        # 图例区域：使用统一的字体大小（16px）
-        if is_legend:
+        # 顶部区域（图例）：使用统一的字体大小（16px），不换行
+        if is_legend or is_top_area:
             legend_font_size = 16
             font = self._get_font(legend_font_size)
-            # 图例区域允许换行
-            lines = self._wrap_text_to_lines(text, region_width, font)
+            # 顶部区域不换行
+            lines = [text]
             return legend_font_size, lines
 
         # 图表中间区域：使用换行而不是缩小字体
