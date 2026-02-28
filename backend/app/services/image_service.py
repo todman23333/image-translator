@@ -519,9 +519,9 @@ class ImageService:
 
         # 图表中间区域：使用换行而不是缩小字体
         if is_chart_area:
-            # 使用12px作为最小字体，允许换行
+            # 使用14px作为最小字体，允许换行
             font_size = 16
-            min_font_size = 12  # 保持12px最小字体
+            min_font_size = 14  # 保持14px最小字体
 
             best_font_size = min_font_size
             best_lines = [text]
