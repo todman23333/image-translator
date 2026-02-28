@@ -486,8 +486,11 @@ class ImageService:
 
             # 根据对齐方式计算x位置
             # 图表区域强制使用左对齐，确保不超出右边界
+            # 顶部区域允许向右溢出
             if is_chart_area:
                 x = x1
+            elif is_top_area:
+                x = x1  # 顶部区域左对齐，让文字向右溢出
             elif style["alignment"] == "center":
                 x = x1 + (region_width - line_width) / 2
             elif style["alignment"] == "right":
