@@ -7,7 +7,11 @@ import os
 # 加载环境变量
 from dotenv import load_dotenv
 
-load_dotenv()
+# 明确指定 .env 文件路径
+dotenv_path = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"
+)
+load_dotenv(dotenv_path)
 
 from app.api.routes import router
 

@@ -691,7 +691,73 @@ class ImageService:
         return text
 
     def _wrap_text_to_lines(self, text: str, max_width: int, font) -> List[str]:
-        """将文本换行到指定宽度"""
+        """智能文本换行 - 支持 CJK 字符级换行"""
+        if not text:
+            return [""]
+
+        # 检测是否包含 CJK 字符
+        def is_cjk(char):
+            return any(
+                [
+                    "\u4e00" <= char <= "\u9fff",  # 中文
+                    "\u3040" <= char <= "\u309f",  # 日文平假名
+                    "\u30a0" <= char <= "\u30ff",  # 日文片假名
+                    "\uac00" <= char <= "\ud7af",  # 韩文
+                ]
+            )
+
+        has_cjk = any(is_cjk(c) for c in text)
+
+        if has_cjk:
+            # CJK 模式：逐字符换行
+            return self._wrap_cjk_text(text, max_width, font)
+        else:
+            # 西文模式：按单词换行
+            return self._wrap_latin_text(text, max_width, font)
+
+    def _wrap_cjk_text(self, text: str, max_width: int, font) -> List[str]:
+        """CJK 文本逐字符换行"""
+        lines = []
+        current_line = ""
+
+        # 标点符号（不允许在行首）
+        no_start = set("，。！？）】》、；：,.!?:;)]}>")
+        # 标点符号（不允许在行尾）
+        no_end = set("（【《({<")
+
+        for i, char in enumerate(text):
+            test_line = current_line + char
+
+            # 检查宽度
+            bbox = ImageDraw.Draw(Image.new("RGB", (1, 1))).textbbox(
+                (0, 0), test_line, font=font
+            )
+            line_width = bbox[2] - bbox[0]
+
+            if line_width > max_width and current_line:
+                # 需要换行
+                # 检查行尾标点
+                if current_line[-1] in no_end and i + 1 < len(text):
+                    # 行尾是开括号，把开括号移到下一行
+                    lines.append(current_line[:-1])
+                    current_line = current_line[-1] + char
+                elif char in no_start and i > 0:
+                    # 当前字符是闭标点，不应在行首
+                    lines.append(current_line)
+                    current_line = char
+                else:
+                    lines.append(current_line)
+                    current_line = char
+            else:
+                current_line = test_line
+
+        if current_line:
+            lines.append(current_line)
+
+        return lines if lines else [text]
+
+    def _wrap_latin_text(self, text: str, max_width: int, font) -> List[str]:
+        """西文文本按单词换行（原有逻辑）"""
         words = text.split()
         if not words:
             return [text]
@@ -750,23 +816,44 @@ class ImageService:
         return text_color
 
     def _get_font(self, size: int, is_bold: bool = False):
-        """获取字体"""
-        system_fonts = [
-            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-            "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"
-            if is_bold
-            else "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-            "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
-            "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-            "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        """获取字体 - 优先从配置目录加载"""
+        import glob as glob_module
+
+        # 1. 优先从 font_dir 加载
+        font_patterns = [
+            os.path.join(self.font_dir, "*.ttc"),
+            os.path.join(self.font_dir, "*.otf"),
+            os.path.join(self.font_dir, "*.ttf"),
         ]
 
-        for font_path in system_fonts:
+        for pattern in font_patterns:
+            for font_path in glob_module.glob(pattern):
+                try:
+                    return ImageFont.truetype(font_path, size)
+                except Exception:
+                    continue
+
+        # 2. 回退到系统路径（跨平台）
+        system_paths = []
+        if os.name == "nt":  # Windows
+            system_paths = [
+                "C:\\Windows\\Fonts\\msyh.ttc",  # 微软雅黑
+                "C:\\Windows\\Fonts\\simsun.ttc",  # 宋体
+                "C:\\Windows\\Fonts\\arial.ttf",
+            ]
+        else:  # Linux/Mac
+            system_paths = [
+                "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+                "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            ]
+
+        for font_path in system_paths:
             if os.path.exists(font_path):
                 try:
                     return ImageFont.truetype(font_path, size)
                 except:
                     continue
 
+        # 3. 最后回退
         return ImageFont.load_default()
