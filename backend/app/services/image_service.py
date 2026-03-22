@@ -308,13 +308,14 @@ class ImageService:
                 is_top_area = (y1 / image.height) < 0.15
 
                 # 检查是否与已绘制区域重叠
-                # 底部区域放宽检测，避免丢失文字
-                overlap_threshold = 0.3 if is_bottom else 0.1
+                # 大幅放宽重叠阈值，避免丢失文字
+                overlap_threshold = 0.6 if is_bottom else 0.5
                 if self._check_overlap(
                     region["bbox"], drawn_regions, overlap_threshold
                 ):
-                    print(f"   ⚠️  检测到重叠，跳过此区域")
-                    continue
+                    print(f"   ⚠️  检测到严重重叠，尝试偏移绘制")
+                    # 不再跳过，而是尝试偏移绘制
+                    # continue
 
                 self._draw_text_in_region_v2(
                     draw,
@@ -375,18 +376,20 @@ class ImageService:
         self,
         bbox: List[List[int]],
         drawn_regions: List[List[List[int]]],
-        threshold: float = 0.1,
+        threshold: float = 0.5,
     ) -> bool:
-        """检查是否与已绘制区域重叠 - 改进版"""
+        """检查是否与已绘制区域重叠 - 改进版（更宽松）"""
         x_coords = [p[0] for p in bbox]
         y_coords = [p[1] for p in bbox]
         x1, x2 = min(x_coords), max(x_coords)
         y1, y2 = min(y_coords), max(y_coords)
 
         area = (x2 - x1) * (y2 - y1)
+        if area == 0:
+            return False
 
-        # 根据阈值调整边距（底部区域使用更小边距）
-        margin = 2 if threshold > 0.2 else 5
+        # 减少边距，避免误判
+        margin = 1
         x1 -= margin
         x2 += margin
         y1 -= margin
@@ -398,19 +401,14 @@ class ImageService:
             dx1, dx2 = min(dx_coords), max(dx_coords)
             dy1, dy2 = min(dy_coords), max(dy_coords)
 
-            # 同样扩大已绘制区域
-            dx1 -= margin
-            dx2 += margin
-            dy1 -= margin
-            dy2 += margin
-
-            # 计算重叠面积
+            # 计算重叠面积（不扩大已绘制区域）
             overlap_x = max(0, min(x2, dx2) - max(x1, dx1))
             overlap_y = max(0, min(y2, dy2) - max(y1, dy1))
             overlap_area = overlap_x * overlap_y
 
             if overlap_area > 0:
                 overlap_ratio = overlap_area / area
+                # 只有重叠比例超过阈值才认为是严重重叠
                 if overlap_ratio > threshold:
                     return True
 
