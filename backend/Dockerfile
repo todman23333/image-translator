@@ -22,13 +22,13 @@ ENV FONT_DIR=/usr/share/fonts/opentype/noto
 ENV PYTHONUNBUFFERED=1
 
 # 复制依赖文件
-COPY requirements.txt .
+COPY backend/requirements.txt .
 
 # 安装Python依赖
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 复制应用代码
-COPY app/ ./app/
+COPY backend/app/ ./app/
 
 # 创建上传和输出目录
 RUN mkdir -p /app/uploads /app/outputs
