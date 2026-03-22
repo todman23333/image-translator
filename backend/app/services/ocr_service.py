@@ -13,12 +13,23 @@ class OCRService:
         if not self._initialized:
             print("正在初始化OCR模型...")
             try:
-                # 使用最基本的配置
-                self.ocr = PaddleOCR(lang="ch")
+                # 设置环境变量禁用模型源检查
+                os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
+
+                # 使用最基本的配置，禁用角度分类器
+                self.ocr = PaddleOCR(
+                    lang="ch",
+                    use_angle_cls=False,  # 禁用角度分类器
+                    show_log=False,  # 减少日志
+                    use_gpu=False,  # 强制使用CPU
+                )
                 self._initialized = True
                 print("✅ OCR模型初始化成功！")
             except Exception as e:
                 print(f"❌ OCR模型初始化失败: {str(e)}")
+                import traceback
+
+                traceback.print_exc()
                 raise
 
     def recognize(self, image_path: str) -> List[Dict]:
@@ -30,13 +41,19 @@ class OCRService:
             self._init_ocr()
 
         try:
+            print(f"开始OCR识别: {image_path}")
             # 执行OCR识别
-            result = self.ocr.ocr(image_path)
+            result = self.ocr.ocr(image_path, cls=False)  # 禁用角度分类
+            print(f"OCR原始结果: {result}")
         except Exception as e:
             print(f"OCR识别出错: {str(e)}")
+            import traceback
+
+            traceback.print_exc()
             return []
 
-        if not result:
+        if not result or not result[0]:
+            print("OCR未检测到任何文本")
             return []
 
         # 解析结果
@@ -64,9 +81,12 @@ class OCRService:
                             "translated_text": None,
                         }
                     )
+                    print(f"检测到文本: {text} (置信度: {confidence:.2f})")
             except Exception as e:
+                print(f"解析OCR结果出错: {str(e)}")
                 continue
 
+        print(f"OCR共检测到 {len(text_regions)} 个文本区域")
         return text_regions
 
     def _detect_language(self, text: str) -> str:
