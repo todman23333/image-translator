@@ -12,18 +12,20 @@ RUN apt-get update && apt-get install -y \
     libgomp1 \
     libglib2.0-0 \
     wget \
+    fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
+
+# 设置环境变量
+ENV UPLOAD_DIR=/app/uploads
+ENV OUTPUT_DIR=/app/outputs
+ENV FONT_DIR=/usr/share/fonts/opentype/noto
+ENV PYTHONUNBUFFERED=1
 
 # 复制依赖文件
 COPY requirements.txt .
 
 # 安装Python依赖
 RUN pip install --no-cache-dir -r requirements.txt
-
-# 下载PaddleOCR模型
-RUN mkdir -p /root/.paddleocr/whl/det/ch/ch_PP-OCRv4_det_infer && \
-    mkdir -p /root/.paddleocr/whl/rec/ch/ch_PP-OCRv4_rec_infer && \
-    mkdir -p /root/.paddleocr/whl/cls/ch_ppocr_mobile_v2.0_cls_infer
 
 # 复制应用代码
 COPY app/ ./app/
