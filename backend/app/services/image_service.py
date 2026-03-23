@@ -277,7 +277,7 @@ class ImageService:
             y1, y2 = min(y_coords), max(y_coords)
 
             # 稍微扩大清除区域
-            margin = 2
+            margin = 5  # 增大边距
             x1 = max(0, x1 - margin)
             y1 = max(0, y1 - margin)
             x2 = min(image.width, x2 + margin)
@@ -294,41 +294,43 @@ class ImageService:
             original_text = region["text"]
             translated_text = region.get("translated_text")
 
-            if translated_text and translated_text != original_text:
-                print(
-                    f"   区域 {i + 1}: '{original_text[:30]}...' → '{translated_text[:30]}...'"
-                )
+            # 如果没有翻译结果，使用原文（处理数字、时间等不需要翻译的内容）
+            if not translated_text:
+                translated_text = original_text
 
-                # 检查区域位置和类型
-                y_coords = [p[1] for p in region["bbox"]]
-                y1 = min(y_coords)
-                is_bottom = y1 > image.height * 0.75
-                is_legend = style.get("is_legend", False)
-                is_chart_area = 0.15 < (y1 / image.height) < 0.75 and not is_legend
-                is_top_area = (y1 / image.height) < 0.15
+            print(
+                f"   区域 {i + 1}: '{original_text[:30]}...' → '{translated_text[:30]}...'"
+            )
 
-                # 检查是否与已绘制区域重叠
-                # 大幅放宽重叠阈值，避免丢失文字
-                overlap_threshold = 0.6 if is_bottom else 0.5
-                if self._check_overlap(
-                    region["bbox"], drawn_regions, overlap_threshold
-                ):
-                    print(f"   ⚠️  检测到严重重叠，尝试偏移绘制")
-                    # 不再跳过，而是尝试偏移绘制
-                    # continue
+            # 检查区域位置和类型
+            y_coords = [p[1] for p in region["bbox"]]
+            y1 = min(y_coords)
+            is_bottom = y1 > image.height * 0.75
+            is_legend = style.get("is_legend", False)
+            is_chart_area = 0.15 < (y1 / image.height) < 0.75 and not is_legend
+            is_top_area = (y1 / image.height) < 0.15
 
-                self._draw_text_in_region_v2(
-                    draw,
-                    result_img,
-                    region["bbox"],
-                    translated_text,
-                    style,
-                    image.height,
-                    is_legend,
-                    is_chart_area,
-                    is_top_area,
-                )
-                drawn_regions.append(region["bbox"])
+            # 检查是否与已绘制区域重叠
+            # 大幅放宽重叠阈值，避免丢失文字
+            overlap_threshold = 0.6 if is_bottom else 0.5
+            if self._check_overlap(region["bbox"], drawn_regions, overlap_threshold):
+                print(f"   ⚠️  检测到严重重叠，尝试偏移绘制")
+                # 不再跳过，而是尝试偏移绘制
+                # continue
+
+            self._draw_text_in_region_v2(
+                draw,
+                result_img,
+                region["bbox"],
+                translated_text,
+                style,
+                image.height,
+                is_legend,
+                is_chart_area,
+                is_top_area,
+                image.width,  # 添加图片宽度参数
+            )
+            drawn_regions.append(region["bbox"])
 
         # 转换回原始模式
         if original_mode != "RGBA":
@@ -425,27 +427,36 @@ class ImageService:
         is_legend: bool = False,
         is_chart_area: bool = False,
         is_top_area: bool = False,
+        img_width: Optional[int] = None,  # 新增图片宽度参数
     ):
-        """在指定区域绘制文字 - 全面改进版V3"""
+        """在指定区域绘制文字 - 全面改进版V4（添加高级排版功能）"""
         # 计算边界框
         x_coords = [p[0] for p in bbox]
         y_coords = [p[1] for p in bbox]
         x1, x2 = min(x_coords), max(x_coords)
         y1, y2 = min(y_coords), max(y_coords)
 
-        region_width = x2 - x1
+        # 计算可用宽度：从文本区域左边缘到图片右边缘
+        # 这样文本可以利用右侧的空白区域
+        if img_width:
+            available_width = img_width - x1  # 从x1到图片右边缘的宽度
+            # 但不要超过原始区域宽度的2倍，避免过度拉伸
+            region_width = x2 - x1
+            max_allowed_width = region_width * 2
+            region_width = min(available_width, max_allowed_width)
+        else:
+            region_width = x2 - x1
+
         region_height = y2 - y1
 
-        # 修复: 检测区域类型 - 图表区域只包含中间部分
+        # 检测区域类型
         is_bottom_region = bool(img_height and y1 > img_height * 0.75)
-        # 图表区域：中间区域（15% < y < 75%）需要换行，顶部（y < 15%）不换行
         is_chart_area = bool(
             img_height and 0.15 < (y1 / img_height) < 0.75 and not is_legend
         )
         is_top_area = bool(img_height and (y1 / img_height) < 0.15)
 
-        # 修复1&6: 智能字体大小调整和自动换行
-        # 图例区域使用统一字体大小
+        # 获取字体大小和换行
         font_size, lines = self._calculate_optimal_font_and_lines(
             text,
             region_width,
@@ -457,38 +468,54 @@ class ImageService:
         )
 
         if not lines or (len(lines) == 1 and not lines[0].strip()):
-            # 如果没有有效的行，使用原始文本
             lines = [text] if text else []
             if not lines:
                 return
 
-        font = self._get_font(font_size, style.get("is_bold", False))
+        # 使用多语言字体回退
+        detected_lang = style.get("language", "zh")
+        font = self._get_font_with_fallback(
+            font_size, detected_lang, style.get("is_bold", False)
+        )
 
-        # 修复: 使用更合理的行高
-        line_height = font_size * (1.4 if is_bottom_region else 1.2)
+        # 自适应行距和字距
+        char_spacing, line_spacing_mult = self._calculate_adaptive_spacing(
+            text, region_width, font_size, detected_lang
+        )
+
+        # 使用自适应行高
+        line_height = font_size * line_spacing_mult
         total_text_height = len(lines) * line_height
 
         # 垂直居中，但确保不超出边界
         start_y = max(y1, y1 + (region_height - total_text_height) / 2)
 
-        # 修复: 优化文字颜色对比度
+        # 优化文字颜色对比度
         text_color = self._optimize_text_color(
             style["font_color"], style["background_color"]
         )
         text_color = tuple(text_color)
+        bg_color = tuple(style["background_color"])
+
+        # 检测是否需要添加阴影效果（深色背景上使用阴影）
+        bg_luminance = sum(bg_color) / (3 * 255)
+        add_shadow = bg_luminance > 0.7  # 浅色背景添加阴影
 
         # 逐行绘制
         for i, line in enumerate(lines):
             bbox_line = draw.textbbox((0, 0), line, font=font)
             line_width = bbox_line[2] - bbox_line[0]
 
+            # 检测溢出
+            overflow_info = self._detect_text_overflow(
+                line, region_width, region_height, font
+            )
+
             # 根据对齐方式计算x位置
-            # 图表区域强制使用左对齐，确保不超出右边界
-            # 顶部区域允许向右溢出
             if is_chart_area:
                 x = x1
             elif is_top_area:
-                x = x1  # 顶部区域左对齐，让文字向右溢出
+                x = x1
             elif style["alignment"] == "center":
                 x = x1 + (region_width - line_width) / 2
             elif style["alignment"] == "right":
@@ -498,8 +525,18 @@ class ImageService:
 
             y = start_y + i * line_height
 
-            # 绘制文字
-            draw.text((x, y), line, font=font, fill=text_color)
+            # 使用增强的文字渲染
+            self._render_text_with_enhanced_style(
+                draw,
+                x,
+                y,
+                line,
+                font,
+                text_color,
+                bg_color,
+                add_shadow=add_shadow,
+                add_outline=False,
+            )
 
     def _calculate_optimal_font_and_lines(
         self,
@@ -527,9 +564,9 @@ class ImageService:
 
         # 图表中间区域：使用换行而不是缩小字体
         if is_chart_area:
-            # 使用10px作为最小字体，允许换行
-            font_size = 16
-            min_font_size = 10  # 10px最小字体
+            # 使用12px作为最小字体，允许换行
+            font_size = 18  # 增大起始字号
+            min_font_size = 12  # 增大最小字号
 
             best_font_size = min_font_size
             best_lines = [text]
@@ -565,14 +602,14 @@ class ImageService:
             # 底部区域：使用实际区域大小，不扩大
             adjusted_width = int(region_width * 1.0)  # 不溢出
             adjusted_height = int(region_height * 1.0)  # 不扩大
-            min_font_size = 6  # 最小字体可以更小
-            max_font_size = min(original_font_size, 14)  # 最大字体限制
+            min_font_size = 8  # 增大最小字号
+            max_font_size = min(original_font_size, 16)  # 增大最大字号
             line_height_mult = 1.2  # 更紧凑的行高
         else:
             adjusted_width = int(region_width * 1.8)
             adjusted_height = int(region_height * 1.3)
-            min_font_size = 8
-            max_font_size = max(original_font_size, 18)
+            min_font_size = 10  # 增大最小字号
+            max_font_size = max(original_font_size, 20)  # 增大最大字号
             line_height_mult = 1.4
 
         # 查找最优字体大小
@@ -812,6 +849,180 @@ class ImageService:
                 return [255, 255, 255]
 
         return text_color
+
+    def _calculate_adaptive_spacing(
+        self, text: str, region_width: int, font_size: int, target_lang: str = "zh"
+    ) -> Tuple[float, float]:
+        """
+        自适应计算行距和字距
+        - 英文→中文：文本通常变短，增加字距
+        - 中文→英文：文本通常变长，减小字距
+        """
+        ascii_ratio = sum(1 for c in text if ord(c) < 128) / max(len(text), 1)
+
+        if target_lang in ["zh", "ja", "ko"]:
+            if ascii_ratio > 0.5:
+                return 1.1, 1.3
+            else:
+                return 1.0, 1.2
+        else:
+            if ascii_ratio < 0.5:
+                return 0.9, 1.1
+            else:
+                return 1.0, 1.2
+
+    def _detect_text_overflow(
+        self, text: str, region_width: int, region_height: int, font
+    ) -> Dict:
+        """检测文本是否超出区域边界"""
+        bbox = ImageDraw.Draw(Image.new("RGB", (1, 1))).textbbox(
+            (0, 0), text, font=font
+        )
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+
+        overflow_x = text_width > region_width
+        overflow_y = text_height > region_height
+
+        scale_x = region_width / text_width if text_width > 0 else 1.0
+        scale_y = region_height / text_height if text_height > 0 else 1.0
+        scale_factor = min(scale_x, scale_y, 1.0)
+
+        return {
+            "overflow_x": overflow_x,
+            "overflow_y": overflow_y,
+            "text_width": text_width,
+            "text_height": text_height,
+            "scale_factor": scale_factor,
+        }
+
+    def _get_font_with_fallback(
+        self, size: int, language: str = "zh", is_bold: bool = False
+    ):
+        """多语言字体 fallback 支持"""
+        import glob as glob_module
+
+        font_priority = {
+            "zh": ["NotoSansCJK", "NotoSansSC", "SimHei", "Microsoft YaHei", "SimSun"],
+            "ja": ["NotoSansCJK", "NotoSansJP", "MS Gothic", "Hiragino Sans"],
+            "ko": ["NotoSansCJK", "NotoSansKR", "Malgun Gothic"],
+            "en": ["Arial", "DejaVuSans", "NotoSans"],
+            "default": ["NotoSansCJK", "DejaVuSans", "Arial"],
+        }
+
+        font_names = font_priority.get(language, font_priority["default"])
+
+        for font_name in font_names:
+            patterns = [
+                os.path.join(self.font_dir, f"*{font_name}*.ttc"),
+                os.path.join(self.font_dir, f"*{font_name}*.otf"),
+                os.path.join(self.font_dir, f"*{font_name}*.ttf"),
+            ]
+            for pattern in patterns:
+                for font_path in glob_module.glob(pattern):
+                    try:
+                        return ImageFont.truetype(font_path, size)
+                    except Exception:
+                        continue
+
+        system_fonts = {
+            "zh": [
+                "C:\\Windows\\Fonts\\msyh.ttc",
+                "C:\\Windows\\Fonts\\simhei.ttf",
+                "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            ],
+            "ja": [
+                "C:\\Windows\\Fonts\\msgothic.ttc",
+                "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            ],
+            "ko": [
+                "C:\\Windows\\Fonts\\malgun.ttf",
+                "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            ],
+            "en": [
+                "C:\\Windows\\Fonts\\arial.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            ],
+        }
+
+        for font_path in system_fonts.get(language, system_fonts["en"]):
+            if os.path.exists(font_path):
+                try:
+                    return ImageFont.truetype(font_path, size)
+                except:
+                    continue
+
+        return self._get_font(size, is_bold)
+
+    def _optimize_paragraph_layout(
+        self, text: str, max_width: int, font, min_line_length: int = 10
+    ) -> List[str]:
+        """优化段落布局"""
+        paragraphs = text.split("\n\n")
+        if len(paragraphs) == 1:
+            paragraphs = text.split("\n")
+
+        optimized_lines = []
+
+        for para in paragraphs:
+            if not para.strip():
+                optimized_lines.append("")
+                continue
+
+            lines = self._wrap_text_to_lines(para.strip(), max_width, font)
+
+            merged_lines = []
+            for i, line in enumerate(lines):
+                if len(line) < min_line_length and i < len(lines) - 1:
+                    next_line = lines[i + 1] if i + 1 < len(lines) else ""
+                    merged = line + " " + next_line
+                    merged_bbox = ImageDraw.Draw(Image.new("RGB", (1, 1))).textbbox(
+                        (0, 0), merged, font=font
+                    )
+                    if merged_bbox[2] <= max_width:
+                        lines[i + 1] = merged
+                        continue
+                merged_lines.append(line)
+
+            optimized_lines.extend(merged_lines)
+            optimized_lines.append("")
+
+        while optimized_lines and not optimized_lines[-1]:
+            optimized_lines.pop()
+
+        return optimized_lines if optimized_lines else [text]
+
+    def _render_text_with_enhanced_style(
+        self,
+        draw: ImageDraw.ImageDraw,
+        x: float,
+        y: float,
+        text: str,
+        font,
+        text_color: tuple,
+        bg_color: tuple,
+        add_shadow: bool = False,
+        add_outline: bool = False,
+    ):
+        """增强的文字渲染"""
+        if add_shadow:
+            shadow_color = (
+                max(0, text_color[0] - 100),
+                max(0, text_color[1] - 100),
+                max(0, text_color[2] - 100),
+            )
+            draw.text((x + 1, y + 1), text, font=font, fill=shadow_color)
+
+        if add_outline:
+            outline_color = (
+                255 - text_color[0],
+                255 - text_color[1],
+                255 - text_color[2],
+            )
+            for dx, dy in [(-1, -1), (-1, 1), (1, -1), (1, 1)]:
+                draw.text((x + dx, y + dy), text, font=font, fill=outline_color)
+
+        draw.text((x, y), text, font=font, fill=text_color)
 
     def _get_font(self, size: int, is_bold: bool = False):
         """获取字体 - 优先从配置目录加载"""

@@ -67,6 +67,16 @@ async def root():
         .progress-bar { width: 100%; height: 20px; background: #f0f0f0; border-radius: 10px; overflow: hidden; margin-top: 10px; }
         .progress-fill { height: 100%; background: #1890ff; width: 0%; transition: width 0.3s; }
         .badge { display: inline-block; background: #52c41a; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin-left: 10px; }
+        
+        /* 移动端响应式 */
+        @media (max-width: 768px) {
+            .header { padding: 15px; }
+            .header h1 { font-size: 18px; }
+            .container { padding: 0 10px; margin: 20px auto; }
+            .card { padding: 20px; }
+            select { width: 100%; }
+            .button { width: 100%; padding: 15px; }
+        }
     </style>
 </head>
 <body>
