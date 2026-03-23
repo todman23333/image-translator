@@ -12,6 +12,9 @@ RUN apt-get update && apt-get install -y \
     libgomp1 \
     wget \
     fonts-noto-cjk \
+    tesseract-ocr \
+    tesseract-ocr-chi-sim \
+    tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
 # 设置环境变量

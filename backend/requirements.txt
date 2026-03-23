@@ -10,3 +10,4 @@ typing-extensions>=4.5.0
 python-dotenv>=1.0.0
 paddlepaddle==2.6.2
 paddleocr==2.7.3
+pytesseract>=0.3.10
