@@ -189,8 +189,9 @@ class ImageService:
 
     def _estimate_font_size(self, region_height: int, text: str) -> int:
         """估算字体大小 - 改进版"""
-        # 根据区域高度估算字体大小
-        font_size = max(8, int(region_height * 0.8))
+        # 根据区域高度估算字体大小，使用更大的系数
+        # 中文需要更大的字体才能清晰显示
+        font_size = max(22, int(region_height * 1.0))  # 最小22px，系数1.0
         return font_size
 
     def _detect_alignment_v2(
@@ -265,7 +266,7 @@ class ImageService:
         )
         drawn_regions = []  # 记录已绘制的区域
 
-        # 首先清除所有文字区域（使用背景色填充）
+        # 只清除需要重绘的区域（翻译过的区域）
         for item in regions_with_style:
             bbox = item["region"]["bbox"]
             style = item["style"]
@@ -437,17 +438,17 @@ class ImageService:
         y1, y2 = min(y_coords), max(y_coords)
 
         # 计算可用宽度：从文本区域左边缘到图片右边缘
-        # 这样文本可以利用右侧的空白区域
-        if img_width:
-            available_width = img_width - x1  # 从x1到图片右边缘的宽度
-            # 但不要超过原始区域宽度的2倍，避免过度拉伸
-            region_width = x2 - x1
-            max_allowed_width = region_width * 2
-            region_width = min(available_width, max_allowed_width)
-        else:
-            region_width = x2 - x1
+        # 改为使用原始区域宽度，不过度扩展，避免翻译后超出边界
+        original_bbox_width = x2 - x1  # 保存原始宽度
+        original_bbox_height = y2 - y1  # 保存原始高度
 
-        region_height = y2 - y1
+        region_width = original_bbox_width  # 先用原始宽度
+        region_height = original_bbox_height
+
+        # 如果需要换行，使用更大的宽度，但限制为原始宽度的2.5倍（增大以适应完整句子）
+        if img_width:
+            max_allowed = int(original_bbox_width * 2.5)
+            region_width = min(region_width, max_allowed)
 
         # 检测区域类型
         is_bottom_region = bool(img_height and y1 > img_height * 0.75)
@@ -487,8 +488,8 @@ class ImageService:
         line_height = font_size * line_spacing_mult
         total_text_height = len(lines) * line_height
 
-        # 垂直居中，但确保不超出边界
-        start_y = max(y1, y1 + (region_height - total_text_height) / 2)
+        # 垂直居中，但确保不超出边界 - 使用原始高度
+        start_y = max(y1, y1 + (original_bbox_height - total_text_height) / 2)
 
         # 优化文字颜色对比度
         text_color = self._optimize_text_color(
@@ -511,19 +512,16 @@ class ImageService:
                 line, region_width, region_height, font
             )
 
-            # 根据对齐方式计算x位置
-            if is_chart_area:
-                x = x1
-            elif is_top_area:
-                x = x1
-            elif style["alignment"] == "center":
-                x = x1 + (region_width - line_width) / 2
-            elif style["alignment"] == "right":
-                x = x2 - line_width
-            else:  # left
-                x = x1
+            # 翻译后的文字全部居中 - 无论哪个区域
+            # 使用原始边界框宽度进行居中计算
+            x = x1 + (original_bbox_width - line_width) / 2
 
-            y = start_y + i * line_height
+            # 底部区域：使用垂直居中，而不是顶部对齐
+            if is_bottom_region:
+                # 垂直居中
+                y = start_y + i * line_height
+            else:
+                y = start_y + i * line_height
 
             # 使用增强的文字渲染
             self._render_text_with_enhanced_style(
@@ -554,9 +552,9 @@ class ImageService:
         # 修复术语翻译问题
         text = self._fix_translation_terms(text)
 
-        # 顶部区域（图例）：使用统一的字体大小（16px），不换行
+        # 顶部区域（图例）：使用统一的字体大小（20px），不换行
         if is_legend or is_top_area:
-            legend_font_size = 16
+            legend_font_size = 20
             font = self._get_font(legend_font_size)
             # 顶部区域不换行
             lines = [text]
@@ -564,9 +562,9 @@ class ImageService:
 
         # 图表中间区域：使用换行而不是缩小字体
         if is_chart_area:
-            # 使用12px作为最小字体，允许换行
-            font_size = 18  # 增大起始字号
-            min_font_size = 12  # 增大最小字号
+            # 使用16px作为最小字体，允许换行
+            font_size = 24  # 增大起始字号
+            min_font_size = 16  # 增大最小字号
 
             best_font_size = min_font_size
             best_lines = [text]
@@ -599,18 +597,19 @@ class ImageService:
 
         # 底部区域使用更紧凑的设置
         if is_bottom_region:
-            # 底部区域：使用实际区域大小，不扩大
-            adjusted_width = int(region_width * 1.0)  # 不溢出
-            adjusted_height = int(region_height * 1.0)  # 不扩大
-            min_font_size = 8  # 增大最小字号
-            max_font_size = min(original_font_size, 16)  # 增大最大字号
-            line_height_mult = 1.2  # 更紧凑的行高
+            # 底部区域：使用实际区域大小，扩大以便显示
+            adjusted_width = int(region_width * 2.5)  # 扩大
+            adjusted_height = int(region_height * 2.5)  # 扩大
+            min_font_size = 24  # 提高最小字号
+            max_font_size = min(original_font_size, 40)  # 提高最大字号
+            line_height_mult = 1.2
         else:
-            adjusted_width = int(region_width * 1.8)
-            adjusted_height = int(region_height * 1.3)
-            min_font_size = 10  # 增大最小字号
-            max_font_size = max(original_font_size, 20)  # 增大最大字号
-            line_height_mult = 1.4
+            # 非底部区域：允许更大的扩展以适应翻译后的文本（大段文字）
+            adjusted_width = int(region_width * 3.5)  # 允许更大扩展
+            adjusted_height = int(region_height * 2.0)  # 允许高度增加
+            min_font_size = 18  # 增大最小字号
+            max_font_size = max(original_font_size, 32)  # 增大最大字号
+            line_height_mult = 1.25
 
         # 查找最优字体大小
         best_font_size = min_font_size
@@ -751,7 +750,7 @@ class ImageService:
             return self._wrap_latin_text(text, max_width, font)
 
     def _wrap_cjk_text(self, text: str, max_width: int, font) -> List[str]:
-        """CJK 文本逐字符换行"""
+        """CJK 文本换行 - 优化版，减少不必要的换行"""
         lines = []
         current_line = ""
 
@@ -769,8 +768,10 @@ class ImageService:
             )
             line_width = bbox[2] - bbox[0]
 
-            if line_width > max_width and current_line:
-                # 需要换行
+            # 超过宽度才换行，允许少量超出以减少断行
+            overflow_threshold = max_width * 1.1  # 允许10%超出
+            if line_width > overflow_threshold and current_line:
+                # 需要换行 - 但只在必要时换行
                 # 检查行尾标点
                 if current_line[-1] in no_end and i + 1 < len(text):
                     # 行尾是开括号，把开括号移到下一行

@@ -340,15 +340,41 @@ async def process_translation_task(
 
         # 更新翻译结果
         for i, region in enumerate(regions_with_style):
-            region["region"]["translated_text"] = translations[i]
+            if i < len(translations):
+                trans_result = translations[i]
 
-        task["text_regions"] = [r["region"] for r in regions_with_style]
-        task["detected_language"] = text_regions[0].get("language", "unknown")
+                # 如果是字典类型，获取翻译文本
+                if isinstance(trans_result, dict):
+                    region["region"]["translated_text"] = trans_result.get("text", "")
+                    skip = trans_result.get("skip_redraw", False)
+                else:
+                    # 兼容旧格式（字符串）
+                    region["region"]["translated_text"] = trans_result
+                    skip = False
 
-        # 4. 重绘图片
+                # 跳过逻辑：
+                # - 如果是明确不需要翻译的内容（如数字、符号、序列号、IP规格），跳过重绘
+                # - 只有需要翻译的内容才重绘
+                if target_language == "zh":
+                    # 中文目标：只重绘需要翻译的内容（skip_redraw=False）
+                    region["skip_redraw"] = skip
+                else:
+                    # 非中文目标：按skip_redraw决定
+                    region["skip_redraw"] = skip
+
+        # 4. 重绘图片 - 过滤掉不需要重绘的区域
         task["progress"] = 80
         output_path = f"outputs/{task_id}.png"
-        image_service.redraw_image(upload_path, regions_with_style, output_path)
+
+        # 过滤出需要重绘的区域
+        regions_to_redraw = [
+            r for r in regions_with_style if not r.get("skip_redraw", False)
+        ]
+        print(
+            f"需要重绘的区域数量: {len(regions_to_redraw)} / {len(regions_with_style)}"
+        )
+
+        image_service.redraw_image(upload_path, regions_to_redraw, output_path)
 
         task["status"] = "completed"
         task["progress"] = 100

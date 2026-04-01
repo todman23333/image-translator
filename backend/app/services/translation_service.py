@@ -1,6 +1,7 @@
 import requests
 import os
 import json
+import re
 from typing import List, Optional
 
 
@@ -12,6 +13,118 @@ class TranslationService:
             print("警告: 未设置DASHSCOPE_API_KEY环境变量")
         self.base_url = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
         self.model = "qwen-turbo"  # 可以使用 qwen-turbo, qwen-plus, qwen-max
+
+    def _should_translate(self, text: str, target_language: str = "en") -> bool:
+        """
+        检测文本是否需要翻译
+
+        不需要翻译的情况：
+        - 纯数字：300, 500, 2024
+        - 数字符号：≥300, ≥500, 0%~95%
+        - 技术规格：IP54, LV ROOM
+        - 序列号：SDA1SF00001
+        - 温度/湿度范围：-25℃~60℃, 0%RH~95%RH
+        - 目标语言是中文时，纯英文不需要翻译
+        """
+        text = text.strip()
+        if not text:
+            return False
+
+        # 0. 短文本和单词优先翻译（不做跳过检测）
+        # 单词长度<=3 优先翻译
+        if len(text) <= 3:
+            return True
+
+        # 1. 纯数字（可带单位符号）
+        # 例如：300, 500, 2024, 1000
+        if re.match(r"^[\d\.,]+$", text):
+            return False
+
+        # 2. 数字符号（带比较符号）
+        # 例如：≥300, ≥500, ≤100, <50, >25
+        if re.match(r"^[<>≤≥]\d+", text):
+            return False
+
+        # 3. 百分比/范围
+        # 例如：0%RH~95%RH, 10%~90%
+        if re.match(r"^\d+%?[RH]?~", text):
+            return False
+
+        # 4. 温度范围
+        # 例如：-25℃~60℃, 0°C~100°C
+        if re.match(r"^-?\d+[℃°][Cc]?~", text, re.IGNORECASE):
+            return False
+
+        # 5. 技术规格/型号（严格的IP格式）
+        # IP54, IP66 等 - 必须精确匹配
+        if re.match(r"^IP\d{2}$", text, re.IGNORECASE):
+            return False
+        # AC220V, 50Hz 等
+        if re.match(r"^[A-Z]+\d+[VHz]+$", text):
+            return False
+
+        # 6. 序列号（纯大写字母+数字）- 更严格的匹配
+        # 例如：SDA1SF00001, ABC123456, STA1SF00001
+        # 必须包含数字且长度>=8，且不是常见英文单词
+        common_words = {
+            "Wall",
+            "Foundation",
+            "Metal",
+            "Front",
+            "Side",
+            "View",
+            "Unit",
+            "Relative",
+            "Ambient",
+            "Heat",
+            "Source",
+            "Separator",
+            "Even",
+            "Width",
+            "Mounting",
+            "Space",
+            "Inverter",
+            "Battery",
+            "Distance",
+            "Please",
+            "Refer",
+            "Corresponding",
+            "Required",
+            "Select",
+            "Even",
+            "width",
+        }
+
+        # 检查是否是常见单词（不跳过）
+        if text in common_words:
+            return True  # 需要翻译
+
+        # 检查严格的序列号格式（纯大写字母+数字，长度>=8）
+        if re.match(r"^[A-Z]{2,}\d{5,}$", text):  # 例如：SDA1SF00001
+            return False
+        if re.match(r"^[A-Z0-9]{10,}$", text):  # 例如：STA1SF00001
+            return False
+
+        # 7. 已经是目标语言（仅当目标是中文时才跳过纯英文）
+        # 只有当目标是中文时，跳过条件更严格：纯数字/符号才跳过
+        if target_language == "zh":
+            # 检查是否全是英文（ASCII）
+            ascii_count = sum(1 for c in text if ord(c) < 128)
+            if ascii_count == len(text):
+                # 只有纯数字、序列号、技术规格才跳过
+                # 英文单词和短句都需要翻译成中文
+                if re.match(r"^[\d\.,]+$", text):  # 纯数字
+                    return False
+                if re.match(r"^[<>≤≥]\d+", text):  # 数字符号
+                    return False
+                if re.match(r"^\d+%?[RH]?~", text):  # 百分比范围
+                    return False
+                if re.match(r"^IP\d{2}$", text, re.IGNORECASE):  # IP规格
+                    return False
+                if re.match(r"^[A-Z]{2,}\d{5,}$", text):  # 序列号
+                    return False
+
+        return True
 
     def _abbreviate_before_translate(self, text: str) -> str:
         """翻译前缩写中文原文 - 更激进"""
@@ -67,7 +180,13 @@ class TranslationService:
 
         for text in texts:
             if not text or not text.strip():
-                results.append(text)
+                results.append({"text": text, "skip_redraw": False})
+                continue
+
+            # 检查是否需要翻译（传入目标语言）
+            if not self._should_translate(text, target_language):
+                print(f"⏭️ 跳过翻译（无需翻译）: {text}")
+                results.append({"text": text, "skip_redraw": True})
                 continue
 
             try:
@@ -78,11 +197,12 @@ class TranslationService:
                 translated = self._translate_single(
                     text, target_lang_name, source_lang_name
                 )
-                results.append(translated)
+                results.append({"text": translated, "skip_redraw": False})
+
             except Exception as e:
                 print(f"翻译失败 '{text}': {str(e)}")
                 # 如果翻译失败，保留原文
-                results.append(text)
+                results.append({"text": text, "skip_redraw": False})
 
         return results
 
@@ -143,6 +263,18 @@ class TranslationService:
                 if choices and len(choices) > 0:
                     message = choices[0].get("message", {})
                     translated_text = message.get("content", "").strip()
+
+                    # 清理翻译结果中的特殊字符
+                    translated_text = translated_text.strip()
+
+                    # 修复常见的温度格式问题
+                    # 将 "60 °C" 或 "60° C" 统一为 "60°C"
+                    translated_text = re.sub(
+                        r"(\d+)\s*°\s*([Cc])", r"\1°C", translated_text
+                    )
+                    # 修复 "60°℃" 这种错误格式
+                    translated_text = translated_text.replace("°℃", "°C")
+                    translated_text = translated_text.replace("℃", "°C")
 
                     # 清理可能的引号或多余内容
                     translated_text = translated_text.strip("\"'")
